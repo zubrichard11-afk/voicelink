@@ -487,7 +487,18 @@ let localStream = null;
 let ppTarget = null;
 let currentMode = 'dm';
 
-const ICE = [{ urls:'stun:stun.l.google.com:19302' },{ urls:'stun:stun1.l.google.com:19302' }];
+const ICE = [
+  { urls:'stun:stun.l.google.com:19302' },
+  { urls:'stun:stun1.l.google.com:19302' },
+  { urls:'stun:stun.relay.metered.ca:80' },
+  { urls:'turn:standard.relay.metered.ca:80',    username:'83b67562085e93f1e1a14cd0', credential:'ncqBb2yq5RBvbTXx' },
+  { urls:'turn:standard.relay.metered.ca:80?transport=tcp', username:'83b67562085e93f1e1a14cd0', credential:'ncqBb2yq5RBvbTXx' },
+  { urls:'turn:standard.relay.metered.ca:443',   username:'83b67562085e93f1e1a14cd0', credential:'ncqBb2yq5RBvbTXx' },
+  { urls:'turns:standard.relay.metered.ca:443?transport=tcp', username:'83b67562085e93f1e1a14cd0', credential:'ncqBb2yq5RBvbTXx' },
+  { urls:'turn:openrelay.metered.ca:80',  username:'openrelayproject', credential:'openrelayproject' },
+  { urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' },
+  { urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
+];
 
 // Color picker
 const cp = document.getElementById('colorPicker');
@@ -1048,9 +1059,25 @@ function updateVCBar() {
 // ══════════════════════════════════════
 // CALL
 // ══════════════════════════════════════
-window.startCall=function(uid,video){ wsSend({type:'call',to:uid,video}); toast(video?'Видеозвонок':'Звонок',video?'📹':'📞','Звоним '+getUser(uid).name+'...','info'); setTimeout(()=>toast('Звонок','📵','Нет ответа','error'),15000); };
-window.answerCall=function(){ closeModal('callModal'); if(window._callFrom) { wsSend({type:'call_answer',to:window._callFrom}); toast('Звонок','📞','Подключаемся...','info'); } };
-window.declineCall=function(){ if(window._callFrom) wsSend({type:'call_decline',to:window._callFrom}); closeModal('callModal'); };
+window.startCall=async function(uid,video){
+  wsSend({type:"call",to:uid,video});
+  toast(video?"Видеозвонок":"Звонок",video?"📹":"📞","Звоним "+getUser(uid).name+"...","info");
+  try{localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});}catch{const c=new AudioContext();localStream=c.createMediaStreamDestination().stream;}
+  document.getElementById("localAudio").srcObject=localStream;
+  window._callTo=uid;
+  window._callTimeout=setTimeout(()=>toast("Звонок","📵","Нет ответа","error"),20000);
+  setTimeout(()=>createOffer(uid),1000);
+};
+window.answerCall=async function(){
+  closeModal("callModal");
+  if(!window._callFrom)return;
+  wsSend({type:"call_answer",to:window._callFrom});
+  toast("Звонок","📞","Подключаемся...","info");
+  try{localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});}catch{const c=new AudioContext();localStream=c.createMediaStreamDestination().stream;}
+  document.getElementById("localAudio").srcObject=localStream;
+  if(window._callTimeout)clearTimeout(window._callTimeout);
+};
+window.declineCall=function(){if(window._callFrom)wsSend({type:"call_decline",to:window._callFrom});closeModal("callModal");};
 
 // ══════════════════════════════════════
 // MIC / DEAF
