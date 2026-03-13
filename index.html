@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceLink</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg0:#0d0f13;--bg1:#15171e;--bg2:#1a1d27;--bg3:#1f2335;--bg4:#262c42;
+  --border:rgba(255,255,255,0.05);--border2:rgba(255,255,255,0.1);
+  --text0:#e8eaf2;--text1:#8c95b0;--text2:#4e566e;
+  --accent:#5865f2;--accent2:#4752c4;
+  --green:#23a55a;--red:#ed4245;--amber:#faa61a;
+  --font:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--text0);font-family:var(--font);font-size:13px}
+button{cursor:pointer;font-family:var(--font)}
+input,textarea{font-family:var(--font)}
+
+/* SETUP */
+#setupScreen{position:fixed;inset:0;background:var(--bg0);z-index:1000;display:flex;align-items:center;justify-content:center}
+.setup-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:32px;width:420px;max-width:95vw;animation:fadein .3s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.setup-logo{font-size:36px;margin-bottom:8px}
+.setup-title{font-size:22px;font-weight:700;margin-bottom:6px}
+.setup-sub{font-size:12px;color:var(--text1);margin-bottom:24px;line-height:1.7}
+.setup-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:6px}
+.setup-input{width:100%;background:var(--bg1);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text0);font-size:13px;outline:none;transition:border-color .2s;margin-bottom:16px}
+.setup-input:focus{border-color:var(--accent)}
+.setup-input::placeholder{color:var(--text2)}
+.color-picker{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+.color-opt{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s}
+.color-opt:hover{transform:scale(1.1)}
+.color-opt.sel{border-color:#fff}
+.btn-big{width:100%;padding:12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:700;transition:background .15s}
+.btn-big:hover{background:var(--accent2)}
+.btn-big:disabled{opacity:.4;cursor:default}
+.setup-err{font-size:11px;color:var(--red);margin-bottom:12px;min-height:16px}
+.ws-note{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--text1);line-height:1.7}
+.ws-note b{color:var(--text0)}
+.ws-note code{color:#f0a030;font-size:10px}
+
+/* APP */
+.app{display:grid;grid-template-columns:72px 240px 1fr;height:100vh;overflow:hidden}
+
+/* RAIL */
+.rail{background:var(--bg0);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:2px;overflow-y:auto;overflow-x:hidden;border-right:1px solid var(--border)}
+.rail::-webkit-scrollbar{display:none}
+.ri{position:relative;width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;transition:border-radius .2s,background .15s;background:var(--bg2);border:none;flex-shrink:0;color:var(--text0)}
+.ri:hover,.ri.act{border-radius:16px;background:var(--accent)}
+.ri.act::before,.ri:hover::before{content:'';position:absolute;left:-4px;top:50%;transform:translateY(-50%);width:4px;height:70%;background:#fff;border-radius:0 4px 4px 0}
+.rail-sep{width:32px;height:1px;background:var(--border2);margin:4px 0;flex-shrink:0}
+.rail-add{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--bg2);border:none;color:var(--green);font-size:24px;transition:all .15s;flex-shrink:0}
+.rail-add:hover{border-radius:16px}
+
+/* SIDEBAR */
+.sidebar{background:var(--bg2);display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+.sb-head{padding:0 16px;height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.sb-title{font-size:13px;font-weight:700}
+.sb-body{flex:1;overflow-y:auto;padding:6px 0}
+.sb-body::-webkit-scrollbar{width:3px}
+.sb-body::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:6px;margin:1px 6px;cursor:pointer;color:var(--text1);transition:background .1s;border:none;background:transparent;width:calc(100% - 12px);text-align:left}
+.nav-item:hover{background:var(--bg3);color:var(--text0)}
+.nav-item.act{background:var(--bg4);color:var(--text0)}
+.nav-icon{font-size:17px;width:22px;text-align:center;flex-shrink:0}
+.nav-badge{background:var(--red);color:#fff;border-radius:10px;min-width:16px;height:16px;padding:0 4px;font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:700;margin-left:auto}
+.dm-search{padding:8px 10px;flex-shrink:0}
+.dm-search input{width:100%;background:var(--bg0);border:none;border-radius:6px;padding:6px 10px;color:var(--text0);font-size:12px;outline:none}
+.dm-search input::placeholder{color:var(--text2)}
+.sec-label{padding:12px 16px 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:600;display:flex;align-items:center;justify-content:space-between}
+.sec-add{background:none;border:none;color:var(--text2);font-size:18px;transition:color .1s}
+.sec-add:hover{color:var(--text0)}
+.dm-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:6px;margin:1px 6px;cursor:pointer;transition:background .1s;position:relative}
+.dm-item:hover{background:var(--bg3)}
+.dm-item.act{background:var(--bg4)}
+.av{position:relative;flex-shrink:0}
+.av-img{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+.av-32{width:32px;height:32px;font-size:13px}
+.av-40{width:40px;height:40px;font-size:16px}
+.st-dot{position:absolute;border-radius:50%;border:2px solid var(--bg2)}
+.st-dot-sm{bottom:-1px;right:-1px;width:11px;height:11px}
+.st-dot-lg{bottom:0;right:0;width:13px;height:13px}
+.online{background:var(--green)}.idle{background:var(--amber)}.dnd{background:var(--red)}.offline{background:#747f8d}
+.dm-name{font-size:13px;color:var(--text0);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dm-sub{font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dm-x{background:none;border:none;color:var(--text2);font-size:13px;opacity:0;transition:opacity .1s;padding:2px 4px;flex-shrink:0}
+.dm-item:hover .dm-x{opacity:1}
+.ch-sec-lbl{padding:9px 8px 3px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:600;display:flex;align-items:center;justify-content:space-between;padding-left:16px}
+.ch-add{background:none;border:none;color:var(--text2);font-size:17px}
+.ch-add:hover{color:var(--text0)}
+.ch-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;margin:1px 6px;cursor:pointer;color:var(--text1);transition:background .1s,color .1s;position:relative;border:none;background:transparent;width:calc(100% - 12px);text-align:left}
+.ch-item:hover{background:var(--bg3);color:var(--text0)}
+.ch-item.act{background:var(--bg4);color:var(--text0)}
+.ch-icon{font-size:15px;width:19px;text-align:center;flex-shrink:0;color:var(--text2)}
+.ch-name{flex:1;font-size:13px}
+.vc-item{flex-direction:column;align-items:flex-start;padding:4px 8px 2px}
+.vc-row{display:flex;align-items:center;gap:8px;width:100%}
+.vc-users{padding:3px 0 2px 27px;display:flex;flex-direction:column;gap:2px;width:100%}
+.vc-user{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text1);padding:2px 4px;border-radius:4px}
+.vc-user.spk{color:var(--green)}
+.vc-dot{width:5px;height:5px;border-radius:50%;background:var(--text2);flex-shrink:0}
+.vc-user.spk .vc-dot{background:var(--green);box-shadow:0 0 5px var(--green);animation:pdot 1.2s ease-in-out infinite}
+@keyframes pdot{0%,100%{opacity:1}50%{opacity:.3}}
+.user-panel{padding:8px 10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--bg1);flex-shrink:0}
+.my-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;position:relative;cursor:pointer}
+.my-info{flex:1;min-width:0}
+.my-name{font-size:12px;font-weight:700}
+.my-tag{font-size:10px;color:var(--text2)}
+.ctrl-btns{display:flex;gap:2px}
+.cb{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:var(--text1);font-size:15px;transition:all .1s}
+.cb:hover{background:var(--bg3);color:var(--text0)}
+.cb.danger{color:var(--red)}
+
+/* MAIN */
+.main{display:flex;flex-direction:column;overflow:hidden;background:var(--bg1)}
+.chat-head{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0}
+.head-icon{font-size:17px;color:var(--text2)}
+.head-name{font-size:14px;font-weight:700}
+.head-sep{width:1px;height:18px;background:var(--border2)}
+.head-desc{font-size:12px;color:var(--text1)}
+.head-acts{margin-left:auto;display:flex;gap:2px}
+.hb{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:var(--text1);font-size:16px;transition:all .1s}
+.hb:hover{background:var(--bg3);color:var(--text0)}
+.msgs{flex:1;overflow-y:auto;padding:12px 0 4px;display:flex;flex-direction:column}
+.msgs::-webkit-scrollbar{width:6px}
+.msgs::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+.day-div{display:flex;align-items:center;gap:12px;padding:10px 16px;flex-shrink:0}
+.day-line{flex:1;height:1px;background:var(--border)}
+.day-txt{font-size:11px;color:var(--text2);white-space:nowrap}
+.msg-g{display:flex;gap:13px;padding:3px 16px;transition:background .1s;position:relative}
+.msg-g:hover{background:rgba(255,255,255,0.02)}
+.msg-av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0;margin-top:2px;cursor:pointer}
+.msg-body{flex:1;min-width:0}
+.msg-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.msg-author{font-size:13px;font-weight:700;cursor:pointer}
+.msg-time{font-size:11px;color:var(--text2)}
+.msg-txt{font-size:13px;line-height:1.65;word-break:break-word}
+.msg-txt code{background:var(--bg3);border-radius:3px;padding:1px 5px;color:#e06c75;font-size:12px}
+.cmd-res{background:var(--bg3);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:4px;padding:8px 12px;margin-top:4px;font-size:12px;color:var(--green);line-height:1.5}
+.msg-acts{position:absolute;right:16px;top:-12px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;display:none;gap:2px;padding:3px}
+.msg-g:hover .msg-acts{display:flex}
+.ma-btn{width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:var(--text1);font-size:13px;transition:all .1s}
+.ma-btn:hover{background:var(--bg4);color:var(--text0)}
+.react-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.react-chip{display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:2px 8px;font-size:12px;cursor:pointer;transition:background .1s;user-select:none}
+.react-chip:hover,.react-chip.mine{border-color:var(--accent);background:rgba(88,101,242,.15)}
+.typing-wrap{height:22px;padding:0 16px;flex-shrink:0;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
+.t-dots{display:flex;gap:3px}
+.td{width:4px;height:4px;border-radius:50%;background:var(--text2);animation:td 1.2s ease-in-out infinite}
+.td:nth-child(2){animation-delay:.2s}.td:nth-child(3){animation-delay:.4s}
+@keyframes td{0%,80%,100%{transform:scale(.6);opacity:.4}40%{transform:scale(1);opacity:1}}
+.inp-wrap{padding:0 16px 16px;flex-shrink:0}
+.inp-box{background:var(--bg3);border-radius:10px;display:flex;align-items:flex-end;gap:6px;padding:9px 12px;border:1px solid transparent;transition:border-color .2s}
+.inp-box:focus-within{border-color:rgba(88,101,242,.4)}
+.inp-btn{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:var(--text2);font-size:17px;transition:color .1s}
+.inp-btn:hover{color:var(--text0)}
+.chat-inp{flex:1;background:transparent;border:none;outline:none;color:var(--text0);font-size:13px;resize:none;max-height:160px;line-height:1.5;padding:3px 0}
+.chat-inp::placeholder{color:var(--text2)}
+.inp-send{background:var(--accent);color:#fff;border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:none;font-size:13px;transition:all .15s}
+.inp-send:hover{background:var(--accent2)}
+.cmd-hint{font-size:11px;color:var(--text2);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap}
+.cmd-hint span{cursor:pointer;transition:color .1s}
+.cmd-hint span:hover{color:var(--accent)}
+
+/* VOICE BAR */
+.vbar{position:absolute;bottom:0;left:72px;width:240px;background:var(--bg1);border-top:1px solid var(--border);border-right:1px solid var(--border);padding:10px 12px;display:none;z-index:20}
+.vbar.vis{display:block}
+.vbar-room{font-size:11px;color:var(--green);font-weight:700;margin-bottom:2px}
+.vbar-stat{font-size:10px;color:var(--text2);margin-bottom:8px}
+.ping-tag{background:var(--bg3);border-radius:4px;padding:1px 6px;font-size:10px;color:var(--green);border:1px solid rgba(35,165,90,.3)}
+.vbar-users{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.vbu{display:flex;align-items:center;gap:4px;font-size:11px;padding:3px 6px;background:var(--bg3);border-radius:12px}
+.vbu.spk{color:var(--green)}
+.vbu-dot{width:5px;height:5px;border-radius:50%;background:var(--text2)}
+.vbu.spk .vbu-dot{background:var(--green);animation:pdot 1s ease-in-out infinite}
+.vbar-btns{display:flex;gap:4px}
+.vb-btn{flex:1;padding:5px 4px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text1);font-size:10px;transition:all .1s;display:flex;align-items:center;justify-content:center;gap:3px;font-family:var(--font)}
+.vb-btn:hover{background:var(--bg4);color:var(--text0)}
+.vb-btn.mut{color:var(--red);border-color:rgba(237,66,69,.3)}
+.vb-leave{padding:5px 8px;border-radius:6px;border:1px solid rgba(237,66,69,.3);background:rgba(237,66,69,.1);color:var(--red);font-size:12px;font-family:var(--font);cursor:pointer;transition:all .1s}
+.vb-leave:hover{background:var(--red);color:#fff}
+
+/* FRIENDS */
+.friends-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.friends-head{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:6px;flex-shrink:0}
+.ftab{padding:5px 12px;border-radius:6px;font-size:13px;cursor:pointer;background:transparent;border:none;color:var(--text1);transition:all .1s}
+.ftab:hover{background:var(--bg3);color:var(--text0)}
+.ftab.act{background:var(--bg4);color:var(--text0)}
+.ftab-add{background:var(--green);color:#fff;font-weight:700}
+.ftab-add:hover{background:#1a7a42}
+.friends-body{flex:1;overflow-y:auto;padding:16px 20px}
+.friends-body::-webkit-scrollbar{width:6px}
+.friends-body::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+.f-sec-lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.f-item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;transition:background .1s;cursor:pointer;border:1px solid transparent;margin-bottom:2px}
+.f-item:hover{background:var(--bg3);border-color:var(--border)}
+.f-info{flex:1;min-width:0}
+.f-name{font-size:14px;font-weight:700}
+.f-status{font-size:12px;color:var(--text2)}
+.f-acts{display:flex;gap:6px;opacity:0;transition:opacity .1s}
+.f-item:hover .f-acts{opacity:1}
+.f-btn{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;font-size:15px;transition:all .1s}
+.f-acc{background:rgba(35,165,90,.15);color:var(--green)}.f-acc:hover{background:var(--green);color:#fff}
+.f-dec{background:rgba(237,66,69,.15);color:var(--red)}.f-dec:hover{background:var(--red);color:#fff}
+.f-msg{background:rgba(88,101,242,.15);color:var(--accent)}.f-msg:hover{background:var(--accent);color:#fff}
+.add-friend-box{max-width:480px;margin:0 auto;padding:24px 0}
+.af-title{font-size:16px;font-weight:700;margin-bottom:6px}
+.af-sub{font-size:12px;color:var(--text1);margin-bottom:14px}
+.af-row{display:flex;gap:8px}
+.af-inp{flex:1;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;padding:9px 12px;color:var(--text0);font-size:13px;outline:none;transition:border-color .2s}
+.af-inp:focus{border-color:var(--accent)}
+.af-inp::placeholder{color:var(--text2)}
+.af-msg{font-size:12px;margin-top:8px;min-height:16px}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text2)}
+.empty-icon{font-size:60px;opacity:.4;margin-bottom:14px}
+
+/* MODALS */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.modal-bg.vis{display:flex}
+.modal{background:var(--bg2);border-radius:12px;padding:24px;min-width:300px;max-width:480px;width:90%;animation:fadein .15s ease;border:1px solid var(--border2)}
+.modal-title{font-size:18px;font-weight:700;margin-bottom:6px}
+.modal-sub{font-size:12px;color:var(--text1);margin-bottom:18px;line-height:1.6}
+.modal-lbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:5px}
+.modal-inp{width:100%;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;padding:9px 12px;color:var(--text0);font-size:13px;outline:none;transition:border-color .2s;margin-bottom:14px}
+.modal-inp:focus{border-color:var(--accent)}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+.btn-cancel{padding:8px 16px;border-radius:6px;border:none;background:transparent;color:var(--text1);font-size:13px}
+.btn-cancel:hover{color:var(--text0)}
+.btn-ok{padding:8px 20px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:700;transition:background .15s}
+.btn-ok:hover{background:var(--accent2)}
+.btn-ok:disabled{opacity:.4;cursor:default}
+.btn-grn{background:var(--green)}.btn-grn:hover{background:#1a7a42}
+.ping-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)}
+.ping-row:last-child{border-bottom:none}
+.ping-name{flex:1;font-size:12px}
+.ping-ms{font-size:12px;font-weight:700;min-width:40px;text-align:right}
+.pb-wrap{width:60px;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.pb-fill{height:100%;border-radius:2px}
+.c-g{color:var(--green)}.c-g-fill{background:var(--green)}
+.c-a{color:var(--amber)}.c-a-fill{background:var(--amber)}
+.c-r{color:var(--red)}.c-r-fill{background:var(--red)}
+.inv-link{background:var(--bg1);border:1px solid var(--border2);border-radius:6px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.inv-link-txt{font-size:12px}
+.inv-copy-btn{padding:5px 12px;border-radius:4px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:700;transition:background .15s}
+.inv-copy-btn:hover{background:var(--accent2)}
+.vcall-modal{text-align:center;padding:30px 24px}
+.vcall-av{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;margin:0 auto 12px;animation:ring 1.5s ease-in-out infinite}
+@keyframes ring{0%,100%{box-shadow:0 0 0 0 rgba(35,165,90,.4)}70%{box-shadow:0 0 0 16px rgba(35,165,90,0)}}
+.vcall-name{font-size:18px;font-weight:700;margin-bottom:4px}
+.vcall-status{font-size:13px;color:var(--text2);margin-bottom:24px}
+.vcall-btns{display:flex;gap:16px;justify-content:center}
+.vcall-btn{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;border:none;transition:all .15s}
+.vcall-ans{background:var(--green);color:#fff}.vcall-ans:hover{background:#1a7a42;transform:scale(1.05)}
+.vcall-dec{background:var(--red);color:#fff}.vcall-dec:hover{background:#c0282b;transform:scale(1.05)}
+
+/* PROFILE POPUP */
+.pp{position:fixed;z-index:600;background:var(--bg2);border-radius:12px;width:280px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.7);border:1px solid var(--border2);display:none;animation:fadein .12s ease}
+.pp.vis{display:block}
+.pp-banner{height:64px}
+.pp-av-wrap{position:absolute;left:16px;transform:translateY(-50%);margin-top:-4px}
+.pp-body{padding:24px 16px 16px}
+.pp-name{font-size:16px;font-weight:700;margin-bottom:2px}
+.pp-tag{font-size:11px;color:var(--text2);margin-bottom:10px}
+.pp-sep{height:1px;background:var(--border);margin:8px 0}
+.pp-row{font-size:12px;color:var(--text2);margin-bottom:6px}
+.pp-btns{display:flex;gap:6px;margin-top:12px}
+.pp-btn{flex:1;padding:8px 6px;border-radius:6px;border:none;font-size:12px;font-weight:700;font-family:var(--font);transition:all .1s}
+.pp-msg{background:var(--accent);color:#fff}.pp-msg:hover{background:var(--accent2)}
+.pp-add{background:var(--green);color:#fff}.pp-add:hover{background:#1a7a42}
+.pp-added{background:var(--bg4);color:var(--green)}
+
+/* STATUS BAR */
+#statusBar{position:fixed;top:0;left:0;right:0;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;z-index:10000;transform:translateY(-100%);transition:transform .3s}
+#statusBar.vis{transform:translateY(0)}
+.sb-connecting{background:var(--amber);color:#000}
+.sb-connected{background:var(--green);color:#fff}
+.sb-error{background:var(--red);color:#fff}
+
+/* TOAST */
+#toastBox{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+.toast{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:11px 16px;min-width:240px;max-width:320px;animation:fadein .2s ease;box-shadow:0 8px 24px rgba(0,0,0,.5);cursor:pointer}
+.toast-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:3px}
+.toast-body{font-size:12px}
+.t-success .toast-title{color:var(--green)}.t-info .toast-title{color:var(--accent)}.t-error .toast-title{color:var(--red)}
+</style>
+</head>
+<body>
+<div id="statusBar"></div>
+
+<!-- SETUP -->
+<div id="setupScreen">
+<div class="setup-card">
+  <div class="setup-logo">⚡</div>
+  <div class="setup-title">VoiceLink</div>
+  <div class="setup-sub">Введи имя — и сразу в эфир. Все участники увидят друг друга онлайн и смогут писать в реальном времени.</div>
+  <div class="setup-label">Твоё имя</div>
+  <input class="setup-input" id="setupName" placeholder="например: Артём" maxlength="24">
+  <div class="setup-label">Цвет аватара</div>
+  <div class="color-picker" id="colorPicker"></div>
+  <div class="setup-err" id="setupErr"></div>
+  <button class="btn-big" id="setupBtn" onclick="startApp()">Войти ⚡</button>
+</div>
+</div>
+
+<!-- APP -->
+<div class="app" id="appRoot" style="display:none">
+<div class="rail" id="rail">
+  <button class="ri act" id="railDM" onclick="switchMode('dm')">💬</button>
+  <div class="rail-sep"></div>
+  <button class="ri" id="railSrv1" onclick="switchMode('server','🎮','VoiceLink HQ')">🎮</button>
+  <button class="ri" onclick="switchMode('server','⚡','Dev Squad')">⚡</button>
+  <div class="rail-sep"></div>
+  <button class="rail-add" onclick="openModal('createSrvModal')">+</button>
+</div>
+
+<div class="sidebar">
+  <!-- DM sidebar -->
+  <div id="dmSidebar" style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+    <div class="sb-head">
+      <span class="sb-title">VoiceLink</span>
+      <span id="wsDot" style="font-size:18px;color:var(--red)" title="Нет соединения">●</span>
+    </div>
+    <div class="dm-search"><input placeholder="Найти или начать беседу" oninput="filterDMs(this.value)"></div>
+    <div class="sb-body">
+      <button class="nav-item act" id="navFriends" onclick="showFriends()">
+        <span class="nav-icon">👥</span><span class="nav-lbl">Друзья</span>
+        <span class="nav-badge" id="reqBadge" style="display:none">0</span>
+      </button>
+      <div class="sec-label">Личные сообщения<button class="sec-add" onclick="openModal('addFriendModal')">+</button></div>
+      <div id="dmList"></div>
+    </div>
+    <div class="user-panel">
+      <div class="my-av" id="myAvEl"></div>
+      <div class="my-info"><div class="my-name" id="myNameEl">—</div><div class="my-tag" id="myTagEl">—</div></div>
+      <div class="ctrl-btns">
+        <button class="cb" id="micBtn" onclick="toggleMic()" title="Mic (Ctrl+M)">🎙</button>
+        <button class="cb" id="deafBtn" onclick="toggleDeaf()">🎧</button>
+        <button class="cb" onclick="toast('Настройки','⚙','Скоро!','info')">⚙</button>
+      </div>
+    </div>
+  </div>
+  <!-- Server sidebar -->
+  <div id="srvSidebar" style="display:none;flex-direction:column;height:100%;overflow:hidden">
+    <div class="sb-head"><span class="sb-title" id="srvSbName">VoiceLink HQ</span></div>
+    <div class="sb-body">
+      <div class="ch-sec-lbl"><span>▾ Текстовые</span><button class="ch-add">+</button></div>
+      <button class="ch-item act" id="chGeneral" onclick="openSrvCh(this,'general','Основной чат')"><span class="ch-icon">#</span><span class="ch-name">general</span></button>
+      <button class="ch-item" onclick="openSrvCh(this,'gaming','Игры и стримы')"><span class="ch-icon">#</span><span class="ch-name">gaming</span></button>
+      <button class="ch-item" onclick="openSrvCh(this,'dev','Разработка')"><span class="ch-icon">#</span><span class="ch-name">dev</span></button>
+      <div class="ch-sec-lbl"><span>▾ Голосовые</span><button class="ch-add">+</button></div>
+      <button class="ch-item vc-item" onclick="joinVoice('Gaming Lounge')">
+        <div class="vc-row"><span class="ch-icon">🔊</span><span class="ch-name">Gaming Lounge</span><span style="font-size:10px;color:var(--text2)" id="vcCount1">0/32</span></div>
+        <div class="vc-users" id="vcUsers1"></div>
+      </button>
+      <button class="ch-item vc-item" onclick="joinVoice('Chill Zone')">
+        <div class="vc-row"><span class="ch-icon">🔊</span><span class="ch-name">Chill Zone</span><span style="font-size:10px;color:var(--text2)" id="vcCount2">0/32</span></div>
+        <div class="vc-users" id="vcUsers2"></div>
+      </button>
+    </div>
+    <div class="user-panel">
+      <div class="my-av" id="myAvSrv" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700"></div>
+      <div class="my-info"><div class="my-name" id="myNameSrv">—</div><div class="my-tag">VoiceLink</div></div>
+      <div class="ctrl-btns">
+        <button class="cb" id="micBtnS" onclick="toggleMic()">🎙</button>
+        <button class="cb" onclick="toggleDeaf()">🎧</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="main" id="mainArea"></div>
+</div>
+
+<!-- VOICE BAR -->
+<div class="vbar" id="vbar">
+  <div class="vbar-room" id="vbarRoom">🔊 Gaming Lounge</div>
+  <div class="vbar-stat">Голосовой · <span class="ping-tag" id="vbarPing">—</span></div>
+  <div class="vbar-users" id="vbarUsers"></div>
+  <div class="vbar-btns">
+    <button class="vb-btn" id="vbMic" onclick="toggleMic()">🎙 Mic</button>
+    <button class="vb-btn" id="vbSnd" onclick="toggleDeaf()">🎧</button>
+    <button class="vb-leave" onclick="leaveVoice()">✕ Выйти</button>
+  </div>
+</div>
+
+<!-- PROFILE POPUP -->
+<div class="pp" id="pp">
+  <div class="pp-banner" id="ppBanner"></div>
+  <div style="position:relative;height:28px"><div class="pp-av-wrap" id="ppAvWrap"></div></div>
+  <div class="pp-body">
+    <div class="pp-name" id="ppName"></div>
+    <div class="pp-tag" id="ppTag"></div>
+    <div class="pp-sep"></div>
+    <div class="pp-row" id="ppStatus"></div>
+    <div class="pp-btns">
+      <button class="pp-btn pp-msg" onclick="ppDM()">💬 Написать</button>
+      <button class="pp-btn pp-add" id="ppFriendBtn" onclick="ppFriend()">+ Добавить</button>
+    </div>
+  </div>
+</div>
+<div id="ppBd" style="position:fixed;inset:0;z-index:599;display:none" onclick="closePP()"></div>
+
+<!-- MODALS -->
+<div class="modal-bg" id="addFriendModal">
+  <div class="modal">
+    <div class="modal-title">Добавить друга</div>
+    <div class="modal-sub">Введите имя пользователя (он должен быть онлайн в VoiceLink прямо сейчас).</div>
+    <div class="modal-lbl">Имя пользователя</div>
+    <input class="modal-inp" id="addFriendInp" placeholder="Имя" oninput="document.getElementById('afBtn').disabled=this.value.length<2">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('addFriendModal')">Отмена</button>
+      <button class="btn-ok btn-grn" id="afBtn" onclick="sendFriendReq()" disabled>Отправить запрос</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="pingModal">
+  <div class="modal">
+    <div class="modal-title">📡 Ping участников</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:12px">WebRTC · Opus · VAD ✓</div>
+    <div id="pingList"></div>
+    <div class="modal-btns"><button class="btn-cancel" onclick="closeModal('pingModal')">Закрыть</button></div>
+  </div>
+</div>
+<div class="modal-bg" id="inviteModal">
+  <div class="modal">
+    <div class="modal-title">🔗 Пригласить друзей</div>
+    <div class="modal-sub">Скинь эту ссылку — друг откроет и сразу зайдёт.</div>
+    <div class="inv-link">
+      <span class="inv-link-txt" id="invLinkTxt"></span>
+      <button class="inv-copy-btn" onclick="copyInv()">Копировать</button>
+    </div>
+    <div class="modal-btns"><button class="btn-cancel" onclick="closeModal('inviteModal')">Закрыть</button></div>
+  </div>
+</div>
+<div class="modal-bg" id="createSrvModal">
+  <div class="modal">
+    <div class="modal-title">Создать сервер</div>
+    <div class="modal-lbl">Название</div>
+    <input class="modal-inp" id="srvNameInp" value="Мой сервер">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('createSrvModal')">Отмена</button>
+      <button class="btn-ok" onclick="createSrv()">Создать</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="callModal">
+  <div class="modal vcall-modal">
+    <div class="vcall-av" id="callAv"></div>
+    <div class="vcall-name" id="callName">—</div>
+    <div class="vcall-status" id="callStatus">Входящий звонок</div>
+    <div class="vcall-btns">
+      <button class="vcall-btn vcall-ans" onclick="answerCall()">📞</button>
+      <button class="vcall-btn vcall-dec" onclick="declineCall()">📵</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastBox"></div>
+<audio id="localAudio" muted autoplay playsinline></audio>
+<div id="remoteAudios"></div>
+
+<script>
+// ══════════════════════════════════════
+// STATE
+// ══════════════════════════════════════
+const AVCOLORS = ['#5865f2','#9b59b6','#2ecc71','#faa61a','#ed4245','#1abc9c','#e91e63','#3498db'];
+let ME = { name:'', color:'#5865f2', init:'', tag:'' };
+let myUid = '';
+let ws = null;
+let onlineUsers = {};
+let friends = new Set();
+let friendRequests = [];
+let sentRequests = new Set();
+let dmConvs = {};
+let srvMsgs = { general:[], gaming:[], dev:[] };
+let vcRooms = {};
+let currentDMId = null;
+let currentView = 'friends';
+let currentSrvCh = 'general';
+let micMuted = false, deafMuted = false;
+let inVoice = false, currentVoiceRoom = '';
+let peerConnections = {};
+let localStream = null;
+let ppTarget = null;
+let currentMode = 'dm';
+
+const ICE = [{ urls:'stun:stun.l.google.com:19302' },{ urls:'stun:stun1.l.google.com:19302' }];
+
+// Color picker
+const cp = document.getElementById('colorPicker');
+let chosenColor = AVCOLORS[0];
+AVCOLORS.forEach((c,i) => {
+  const d = document.createElement('div');
+  d.className = 'color-opt'+(i===0?' sel':'');
+  d.style.background = c;
+  d.onclick = () => { chosenColor = c; document.querySelectorAll('.color-opt').forEach(x=>x.classList.remove('sel')); d.classList.add('sel'); };
+  cp.appendChild(d);
+});
+
+// ══════════════════════════════════════
+// SETUP
+// ══════════════════════════════════════
+window.startApp = function() {
+  const name = document.getElementById('setupName').value.trim();
+  if (!name) { document.getElementById('setupErr').textContent = 'Введи имя'; return; }
+  ME.name = name; ME.color = chosenColor; ME.init = name[0].toUpperCase();
+  ME.tag = '#' + String(Math.floor(Math.random()*9000)+1000);
+  myUid = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  document.getElementById('setupBtn').disabled = true;
+  document.getElementById('setupBtn').textContent = 'Подключение...';
+  connectWS();
+};
+document.getElementById('setupName').addEventListener('keydown', e => { if(e.key==='Enter') startApp(); });
+
+// ══════════════════════════════════════
+// WEBSOCKET
+// ══════════════════════════════════════
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = proto + '//' + location.host;
+  showStatus('Подключаемся...', 'connecting');
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type:'join', uid:myUid, name:ME.name, color:ME.color, init:ME.init, tag:ME.tag }));
+    showStatus('Подключено ✓', 'connected');
+    setTimeout(() => hideStatus(), 2000);
+    setWsDot('green');
+    launchApp();
+  };
+
+  ws.onmessage = e => handleWS(JSON.parse(e.data));
+
+  ws.onclose = () => {
+    setWsDot('red');
+    showStatus('Соединение потеряно. Переподключаемся...', 'error');
+    setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => {};
+}
+
+function wsSend(data) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(data)); }
+
+function handleWS(d) {
+  switch(d.type) {
+    case 'init':
+      onlineUsers = d.users || {};
+      vcRooms = d.rooms || {};
+      if (d.msgs) { srvMsgs.general = d.msgs.general||[]; srvMsgs.gaming = d.msgs.gaming||[]; srvMsgs.dev = d.msgs.dev||[]; }
+      renderDMList(); renderVCUsers();
+      if (currentView.startsWith('srv:')) renderSrvMsgs(currentSrvCh);
+      break;
+    case 'user_join':
+      onlineUsers[d.uid] = d.user;
+      renderDMList(); renderVCUsers();
+      toast('Онлайн','🟢', d.user.name + ' вошёл', 'info');
+      break;
+    case 'user_leave':
+      delete onlineUsers[d.uid];
+      renderDMList(); renderVCUsers();
+      break;
+    case 'user_update':
+      if (onlineUsers[d.uid]) { onlineUsers[d.uid].status = d.status; onlineUsers[d.uid].activity = d.activity; }
+      renderDMList();
+      break;
+    case 'chat':
+      if (!srvMsgs[d.channel]) srvMsgs[d.channel] = [];
+      srvMsgs[d.channel].push(d.msg);
+      if (currentView === 'srv:'+d.channel) appendMsg(d.msg, d.channel);
+      break;
+    case 'dm':
+      if (!dmConvs[d.from]) dmConvs[d.from] = [];
+      dmConvs[d.from].push(d.msg);
+      if (currentDMId === d.from) appendMsg(d.msg, d.from);
+      else { renderDMList(); toast('💬 '+d.msg.fromName, '💬', stripHtml(d.msg.text).slice(0,40), 'info'); }
+      break;
+    case 'dm_sent':
+      break;
+    case 'dm_history': {
+      const otherId = d.convId.split('_vs_').find(x=>x!==myUid);
+      if (otherId) dmConvs[otherId] = d.msgs || [];
+      break;
+    }
+    case 'friend_req':
+      if (!friendRequests.find(x=>x.uid===d.from)) {
+        onlineUsers[d.from] = { name:d.name, color:d.color, init:d.init, tag:d.tag, status:'online', activity:'' };
+        friendRequests.push({ uid:d.from, name:d.name, color:d.color, init:d.init, tag:d.tag });
+        updateReqBadge();
+        toast('Запрос в друзья','👥', d.name+' хочет добавить вас!', 'info');
+      }
+      break;
+    case 'friend_accept':
+      friends.add(d.from);
+      toast('Друг добавлен','🎉', d.name+' принял запрос!', 'success');
+      renderDMList();
+      break;
+    case 'incoming_call':
+      document.getElementById('callAv').style.background = d.color;
+      document.getElementById('callAv').textContent = d.init;
+      document.getElementById('callName').textContent = d.name;
+      document.getElementById('callStatus').textContent = d.video ? 'Входящий видеозвонок' : 'Входящий звонок';
+      openModal('callModal');
+      window._callFrom = d.from;
+      setTimeout(() => closeModal('callModal'), 30000);
+      break;
+    case 'call_declined':
+      toast('Звонок','📵', getUser(d.from).name+' отклонил', 'error');
+      break;
+    case 'voice_peers':
+      d.peers.forEach(peerUid => createOffer(peerUid));
+      break;
+    case 'voice_update':
+      vcRooms = d.rooms || {};
+      renderVCUsers(); updateVCBar();
+      break;
+    case 'offer':  handleOffer(d); break;
+    case 'answer': handleAnswer(d); break;
+    case 'ice':    handleIce(d); break;
+  }
+}
+
+// ══════════════════════════════════════
+// LAUNCH APP
+// ══════════════════════════════════════
+function launchApp() {
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('appRoot').style.display = 'grid';
+  ['myAvEl','myAvSrv'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.style.background = ME.color;
+    el.textContent = ME.init;
+    const dot = document.createElement('div');
+    dot.style.cssText = 'position:absolute;bottom:-1px;right:-1px;width:11px;height:11px;border-radius:50%;background:var(--green);border:2px solid var(--bg1)';
+    el.appendChild(dot);
+  });
+  document.getElementById('myNameEl').textContent = ME.name;
+  document.getElementById('myTagEl').textContent = ME.tag;
+  document.getElementById('myNameSrv').textContent = ME.name;
+  document.getElementById('invLinkTxt').textContent = location.href;
+  showFriends();
+  setInterval(() => { if(inVoice) { const el=document.getElementById('vbarPing'); if(el) el.textContent=(8+Math.floor(Math.random()*18))+'ms'; } }, 3000);
+}
+
+// ══════════════════════════════════════
+// RENDER DM LIST
+// ══════════════════════════════════════
+window.filterDMs = function(v) { renderDMList(v); };
+function renderDMList(filter='') {
+  const el = document.getElementById('dmList'); if (!el) return;
+  const seen = new Set();
+  let rows = [];
+  [...friends].forEach(uid => { if(!seen.has(uid)){ seen.add(uid); rows.push(uid); } });
+  Object.keys(dmConvs).forEach(uid => { if(!seen.has(uid)){ seen.add(uid); rows.push(uid); } });
+  if (filter) rows = rows.filter(uid => getUser(uid).name.toLowerCase().includes(filter.toLowerCase()));
+  el.innerHTML = rows.map(uid => {
+    const u = getUser(uid);
+    const msgs = dmConvs[uid]||[];
+    const last = msgs[msgs.length-1];
+    const sub = last ? stripHtml(last.text||'').slice(0,28) : '';
+    return `<div class="dm-item${currentDMId===uid?' act':''}" onclick="openDM('${uid}')">
+      <div class="av"><div class="av-img av-32" style="background:${u.color}">${u.init}</div><div class="st-dot st-dot-sm ${u.status||'offline'}"></div></div>
+      <div style="flex:1;min-width:0"><div class="dm-name">${esc(u.name)}</div>${sub?`<div class="dm-sub">${esc(sub)}</div>`:''}</div>
+      <button class="dm-x" onclick="event.stopPropagation();closeDM('${uid}')">✕</button>
+    </div>`;
+  }).join('');
+}
+window.closeDM = function(uid) { delete dmConvs[uid]; if(currentDMId===uid){ currentDMId=null; showFriends(); } renderDMList(); };
+
+// ══════════════════════════════════════
+// OPEN DM
+// ══════════════════════════════════════
+window.openDM = function(uid) {
+  if (!dmConvs[uid]) dmConvs[uid] = [];
+  currentDMId = uid; currentView = 'dm:'+uid;
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('act'));
+  renderDMList();
+  const u = getUser(uid);
+  document.getElementById('mainArea').innerHTML = `
+  <div class="friends-wrap">
+    <div class="chat-head">
+      <div class="av" style="flex-shrink:0"><div class="av-img av-32" style="background:${u.color};cursor:pointer" onclick="openPP('${uid}',this)">${u.init}</div><div class="st-dot st-dot-sm ${u.status||'offline'}"></div></div>
+      <span class="head-name" style="cursor:pointer" onclick="openPP('${uid}',this)">${esc(u.name)}</span>
+      <div class="head-sep"></div><span class="head-desc">${statusLabel(u.status)}</span>
+      <div class="head-acts">
+        <button class="hb" onclick="startCall('${uid}',false)" title="Позвонить">📞</button>
+        <button class="hb" onclick="startCall('${uid}',true)" title="Видео">📹</button>
+        <button class="hb" onclick="openPP('${uid}',this)">🙂</button>
+      </div>
+    </div>
+    <div class="msgs" id="dmMsgs"></div>
+    <div class="typing-wrap" id="dmTyping"></div>
+    <div class="inp-wrap">
+      <div class="inp-box">
+        <button class="inp-btn">+</button>
+        <textarea class="chat-inp" id="dmInp" placeholder="Написать @${esc(u.name)}..." rows="1"
+          oninput="autoResize(this)" onkeydown="handleKey(event,'dm','${uid}')"></textarea>
+        <button class="inp-btn">😊</button>
+        <button class="inp-send" onclick="sendDM('${uid}')">➤</button>
+      </div>
+      <div class="cmd-hint"><span onclick="putInp('dmInp','!ping')">!ping</span><span onclick="putInp('dmInp','!invite')">!invite</span><span onclick="putInp('dmInp','!quality')">!quality</span></div>
+    </div>
+  </div>`;
+  renderDMMsgs(uid);
+};
+
+function renderDMMsgs(uid) {
+  const el = document.getElementById('dmMsgs'); if (!el) return;
+  const msgs = dmConvs[uid]||[];
+  let html = `<div class="day-div"><div class="day-line"></div><span class="day-txt">Сегодня</span><div class="day-line"></div></div>`;
+  msgs.forEach(m => { html += renderMsg(m); });
+  el.innerHTML = html; el.scrollTop = el.scrollHeight;
+}
+
+window.sendDM = function(uid) {
+  const inp = document.getElementById('dmInp'); if (!inp) return;
+  const val = inp.value.trim(); if (!val) return;
+  inp.value = ''; inp.style.height = 'auto';
+  const text = val.startsWith('!') ? `<code>${esc(val)}</code>` : esc(val);
+  const cmd = val.startsWith('!') ? processCmd(val) : null;
+  const msg = { from: myUid, fromName: ME.name, fromColor: ME.color, fromInit: ME.init, text, cmd, time: tNow(), ts: Date.now() };
+  if (!dmConvs[uid]) dmConvs[uid] = [];
+  dmConvs[uid].push(msg);
+  appendMsg(msg, uid);
+  wsSend({ type:'dm', to:uid, text, time:msg.time });
+  if (val.toLowerCase() === '!invite') setTimeout(()=>openModal('inviteModal'),200);
+};
+
+// ══════════════════════════════════════
+// SERVER CHANNEL
+// ══════════════════════════════════════
+window.openSrvCh = function(btn, ch, desc) {
+  currentSrvCh = ch; currentView = 'srv:'+ch; currentDMId = null;
+  document.querySelectorAll('.ch-item:not(.vc-item)').forEach(x=>x.classList.remove('act'));
+  btn.classList.add('act');
+  document.getElementById('mainArea').innerHTML = `
+  <div class="friends-wrap">
+    <div class="chat-head">
+      <span class="head-icon">#</span><span class="head-name">${ch}</span>
+      <div class="head-sep"></div><span class="head-desc">${esc(desc)}</span>
+      <div class="head-acts">
+        <button class="hb" onclick="showPing()">📡</button>
+        <button class="hb" onclick="openModal('inviteModal')">🔗</button>
+      </div>
+    </div>
+    <div class="msgs" id="srvMsgs"></div>
+    <div class="typing-wrap" id="srvTyping"></div>
+    <div class="inp-wrap">
+      <div class="inp-box">
+        <button class="inp-btn">+</button>
+        <textarea class="chat-inp" id="srvInp" placeholder="Написать в #${ch}..." rows="1"
+          oninput="autoResize(this)" onkeydown="handleKey(event,'srv',null)"></textarea>
+        <button class="inp-btn">😊</button>
+        <button class="inp-send" onclick="sendSrv('${ch}')">➤</button>
+      </div>
+      <div class="cmd-hint"><span onclick="putInp('srvInp','!ping')">!ping</span><span onclick="putInp('srvInp','!invite')">!invite</span><span onclick="putInp('srvInp','!quality')">!quality</span></div>
+    </div>
+  </div>`;
+  renderSrvMsgs(ch);
+};
+
+function renderSrvMsgs(ch) {
+  const el = document.getElementById('srvMsgs'); if (!el) return;
+  let html = `<div class="day-div"><div class="day-line"></div><span class="day-txt">Сегодня</span><div class="day-line"></div></div>`;
+  (srvMsgs[ch]||[]).forEach(m => { html += renderMsg(m); });
+  el.innerHTML = html; el.scrollTop = el.scrollHeight;
+}
+
+window.sendSrv = function(ch) {
+  const inp = document.getElementById('srvInp'); if (!inp) return;
+  const val = inp.value.trim(); if (!val) return;
+  inp.value = ''; inp.style.height = 'auto';
+  const text = val.startsWith('!') ? `<code>${esc(val)}</code>` : esc(val);
+  const cmd = val.startsWith('!') ? processCmd(val) : null;
+  const msg = { from: myUid, fromName: ME.name, fromColor: ME.color, fromInit: ME.init, text, cmd, time: tNow(), ts: Date.now() };
+  if (!srvMsgs[ch]) srvMsgs[ch] = [];
+  srvMsgs[ch].push(msg);
+  appendMsg(msg, ch);
+  wsSend({ type:'chat', channel:ch, text, time:msg.time });
+  if (val.toLowerCase() === '!invite') setTimeout(()=>openModal('inviteModal'),200);
+};
+
+function appendMsg(m, ctx) {
+  const elId = ctx === currentDMId ? 'dmMsgs' : (currentView==='srv:'+ctx ? 'srvMsgs' : null);
+  if (!elId) return;
+  const el = document.getElementById(elId); if (!el) return;
+  el.insertAdjacentHTML('beforeend', renderMsg(m));
+  el.scrollTop = el.scrollHeight;
+}
+
+// ══════════════════════════════════════
+// MSG RENDERER
+// ══════════════════════════════════════
+function renderMsg(m) {
+  const isMe = m.from === myUid;
+  const color = m.fromColor || (isMe ? ME.color : '#747f8d');
+  const init = m.fromInit || (isMe ? ME.init : '?');
+  const name = m.fromName || (isMe ? ME.name : getUser(m.from).name);
+  return `<div class="msg-g">
+    <div class="msg-av" style="background:${color};cursor:pointer" onclick="openPP('${m.from}',this)">${init}</div>
+    <div class="msg-body">
+      <div class="msg-meta"><span class="msg-author" style="color:${color}">${esc(name)}</span><span class="msg-time">${m.time||''}</span></div>
+      <div class="msg-txt">${m.text||''}</div>
+      ${m.cmd?`<div class="cmd-res">${esc(m.cmd)}</div>`:''}
+    </div>
+    <div class="msg-acts">
+      <button class="ma-btn" onclick="quickReact(this)">😊</button>
+      <button class="ma-btn">↩</button>
+      ${isMe?`<button class="ma-btn" style="color:var(--red)" onclick="this.closest('.msg-g').remove()">🗑</button>`:''}
+    </div>
+  </div>`;
+}
+
+window.quickReact = function(btn) {
+  const emojis=['👍','❤️','😂','🔥','👀','✅'];
+  const e = emojis[Math.floor(Math.random()*emojis.length)];
+  const body = btn.closest('.msg-g').querySelector('.msg-body');
+  let rr = body.querySelector('.react-row');
+  if (!rr) { rr=document.createElement('div'); rr.className='react-row'; body.appendChild(rr); }
+  const chip=document.createElement('span'); chip.className='react-chip mine'; chip.textContent=e+' 1';
+  chip.onclick=()=>{ const n=parseInt(chip.textContent.split(' ')[1])+1; chip.textContent=e+' '+n; };
+  rr.appendChild(chip);
+};
+
+// ══════════════════════════════════════
+// COMMANDS
+// ══════════════════════════════════════
+function processCmd(cmd) {
+  const c = cmd.toLowerCase().trim();
+  if (c==='!ping') return '📡 Ping: вы '+(8+Math.floor(Math.random()*10))+'ms · VAD ✓ · WebRTC P2P';
+  if (c==='!invite') return '🔗 Ссылка: '+location.href;
+  if (c==='!quality') return '📊 Opus 64kbps · WebRTC · Jitter ~4ms · Loss 0%';
+  if (c.startsWith('!mute ')) return '🔇 '+cmd.slice(6).trim()+' замьючен.';
+  if (c.startsWith('!kick ')) return '⛔ '+cmd.slice(6).trim()+' кикнут.';
+  return '❓ Команды: !ping !invite !quality !mute @user !kick @user';
+}
+
+// ══════════════════════════════════════
+// FRIENDS
+// ══════════════════════════════════════
+window.showFriends = function(tab) {
+  currentDMId = null; currentView = 'friends';
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('act'));
+  document.getElementById('navFriends').classList.add('act');
+  renderDMList();
+  const t = tab||'online';
+  document.getElementById('mainArea').innerHTML = `
+  <div class="friends-wrap">
+    <div class="friends-head">
+      <span class="head-icon">👥</span><span class="head-name" style="margin-right:6px">Друзья</span>
+      <button class="ftab${t==='online'?' act':''}" onclick="showFriends('online')">В сети</button>
+      <button class="ftab${t==='all'?' act':''}" onclick="showFriends('all')">Все</button>
+      <button class="ftab${t==='pending'?' act':''}" onclick="showFriends('pending')" style="position:relative">
+        Ожидание${friendRequests.length?`<span style="position:absolute;top:-3px;right:-3px;background:var(--red);color:#fff;border-radius:50%;width:15px;height:15px;font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:700">${friendRequests.length}</span>`:''}
+      </button>
+      <button class="ftab ftab-add" onclick="showFriends('add')">+ Добавить друга</button>
+    </div>
+    <div class="friends-body" id="friendsBody"></div>
+  </div>`;
+  renderFTab(t);
+};
+
+function renderFTab(t) {
+  const el = document.getElementById('friendsBody'); if (!el) return;
+  if (t==='add') {
+    el.innerHTML=`<div class="add-friend-box">
+      <div class="af-title">Добавить в друзья</div>
+      <div class="af-sub">Введи точное имя пользователя. Он должен быть онлайн в VoiceLink прямо сейчас.</div>
+      <div class="af-row">
+        <input class="af-inp" id="afInp" placeholder="Имя пользователя" oninput="document.getElementById('afBtn2').disabled=this.value.length<2">
+        <button class="btn-ok btn-grn" id="afBtn2" onclick="sendFReq2()" disabled>Отправить</button>
+      </div>
+      <div class="af-msg" id="afMsg2" style="font-size:12px;margin-top:8px;min-height:16px"></div>
+    </div>`; return;
+  }
+  if (t==='pending') {
+    if (!friendRequests.length) { el.innerHTML=`<div class="empty-state"><div class="empty-icon">🎉</div><div>Нет запросов</div></div>`; return; }
+    el.innerHTML = `<div class="f-sec-lbl" style="margin-bottom:12px">Входящие — ${friendRequests.length}</div>` +
+      friendRequests.map(r=>`<div class="f-item">
+        <div class="av"><div class="av-img av-40" style="background:${r.color}">${r.init}</div><div class="st-dot st-dot-lg online"></div></div>
+        <div class="f-info"><div class="f-name">${esc(r.name)}</div><div class="f-status">${r.tag}</div></div>
+        <div class="f-acts" style="opacity:1">
+          <button class="f-btn f-acc" onclick="acceptFriend('${r.uid}')">✓</button>
+          <button class="f-btn f-dec" onclick="declineFriend('${r.uid}')">✕</button>
+        </div></div>`).join('');
+    return;
+  }
+  let list = [...friends];
+  if (t==='online') list = list.filter(uid=>{ const u=getUser(uid); return u.status!=='offline'; });
+  if (!list.length) { el.innerHTML=`<div class="empty-state"><div class="empty-icon">👥</div><div>Нет друзей${t==='online'?' в сети':''}</div></div>`; return; }
+  el.innerHTML = list.map(uid=>{
+    const u=getUser(uid);
+    return `<div class="f-item" onclick="openPP('${uid}',this)">
+      <div class="av"><div class="av-img av-40" style="background:${u.color}">${u.init}</div><div class="st-dot st-dot-lg ${u.status||'offline'}"></div></div>
+      <div class="f-info"><div class="f-name">${esc(u.name)}</div><div class="f-status">${statusLabel(u.status)}</div></div>
+      <div class="f-acts">
+        <button class="f-btn f-msg" onclick="event.stopPropagation();openDM('${uid}')">💬</button>
+        <button class="f-btn f-dec" onclick="event.stopPropagation();removeFriend('${uid}')">✕</button>
+      </div></div>`;
+  }).join('');
+}
+
+window.acceptFriend = function(uid) {
+  const r = friendRequests.find(x=>x.uid===uid); if (!r) return;
+  friends.add(uid);
+  friendRequests = friendRequests.filter(x=>x.uid!==uid);
+  if (!dmConvs[uid]) dmConvs[uid]=[];
+  wsSend({ type:'friend_accept', to:uid });
+  toast('Друг добавлен','🎉', r.name+' теперь ваш друг!', 'success');
+  updateReqBadge(); renderDMList(); showFriends('pending');
+};
+window.declineFriend = function(uid) { friendRequests=friendRequests.filter(x=>x.uid!==uid); updateReqBadge(); showFriends('pending'); };
+window.removeFriend = function(uid) { friends.delete(uid); toast('Удалено','👋',getUser(uid).name+' удалён','info'); showFriends('all'); };
+
+window.sendFriendReq = function() { const v=document.getElementById('addFriendInp').value.trim(); closeModal('addFriendModal'); doFReq(v); };
+window.sendFReq2 = function() { doFReq(document.getElementById('afInp').value.trim(), true); };
+function doFReq(name, inline=false) {
+  const match = Object.entries(onlineUsers).find(([uid,u])=>u.name.toLowerCase()===name.toLowerCase());
+  const msg = document.getElementById('afMsg2');
+  if (match) {
+    const [uid,u]=match;
+    if (friends.has(uid)) { toast('Уже друзья','👥',u.name+' уже в списке','info'); return; }
+    sentRequests.add(uid);
+    wsSend({ type:'friend_req', to:uid });
+    toast('Запрос отправлен','✅',u.name+' получит запрос','success');
+    if (inline&&msg) { msg.style.color='var(--green)'; msg.textContent='Запрос '+u.name+' отправлен!'; }
+  } else {
+    toast('Не найден','❌','"'+name+'" не онлайн или не существует','error');
+    if (inline&&msg) { msg.style.color='var(--red)'; msg.textContent='Пользователь не найден или не в сети.'; }
+  }
+}
+function updateReqBadge() { const b=document.getElementById('reqBadge'); if(!b)return; if(friendRequests.length){b.textContent=friendRequests.length;b.style.display='';}else b.style.display='none'; }
+
+// ══════════════════════════════════════
+// PROFILE POPUP
+// ══════════════════════════════════════
+window.openPP = function(uid, anchor) {
+  if (!uid || uid===myUid) return;
+  ppTarget=uid;
+  const u=getUser(uid);
+  document.getElementById('ppBanner').style.background=u.color+'33';
+  document.getElementById('ppAvWrap').innerHTML=`<div style="width:52px;height:52px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;border:4px solid var(--bg2)">${u.init}</div>`;
+  document.getElementById('ppName').textContent=u.name;
+  document.getElementById('ppTag').textContent=u.name+(u.tag||'');
+  document.getElementById('ppStatus').textContent=statusLabel(u.status);
+  const fb=document.getElementById('ppFriendBtn');
+  if(friends.has(uid)){fb.textContent='✓ Друзья';fb.className='pp-btn pp-added';}
+  else{fb.textContent='+ Добавить';fb.className='pp-btn pp-add';}
+  const pp=document.getElementById('pp');
+  const r=anchor&&anchor.getBoundingClientRect?anchor.getBoundingClientRect():{right:500,top:200};
+  pp.style.left=Math.min(r.right+8,window.innerWidth-295)+'px';
+  pp.style.top=Math.min(r.top,window.innerHeight-360)+'px';
+  pp.classList.add('vis'); document.getElementById('ppBd').style.display='block';
+};
+window.closePP=()=>{ document.getElementById('pp').classList.remove('vis'); document.getElementById('ppBd').style.display='none'; ppTarget=null; };
+window.ppDM=()=>{ if(!ppTarget)return; const id=ppTarget; closePP(); if(!dmConvs[id])dmConvs[id]=[]; openDM(id); };
+window.ppFriend=()=>{ if(!ppTarget)return; if(friends.has(ppTarget)){removeFriend(ppTarget);closePP();return;} doFReq(getUser(ppTarget).name); sentRequests.add(ppTarget); document.getElementById('ppFriendBtn').textContent='✉ Отправлен'; };
+
+// ══════════════════════════════════════
+// WEBRTC VOICE
+// ══════════════════════════════════════
+window.joinVoice = async function(room) {
+  try { localStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false}); }
+  catch { const c=new AudioContext(); localStream=c.createMediaStreamDestination().stream; toast('Микрофон','🎙','Нет доступа к микрофону','error'); }
+  document.getElementById('localAudio').srcObject=localStream;
+  inVoice=true; currentVoiceRoom=room;
+  document.getElementById('vbar').classList.add('vis');
+  document.getElementById('vbarRoom').textContent='🔊 '+room;
+  wsSend({ type:'join_voice', room });
+  startVAD();
+  toast('Голосовой','🔊','Вы в "'+room+'"','success');
+};
+
+window.leaveVoice = function() {
+  inVoice=false; currentVoiceRoom='';
+  wsSend({ type:'leave_voice' });
+  document.getElementById('vbar').classList.remove('vis');
+  Object.values(peerConnections).forEach(pc=>pc.close()); peerConnections={};
+  if(localStream){ localStream.getTracks().forEach(t=>t.stop()); localStream=null; }
+  toast('Голосовой','👋','Вы вышли','info');
+};
+
+async function createOffer(peerUid) {
+  const pc=newPC(peerUid);
+  const offer=await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  wsSend({ type:'offer', to:peerUid, sdp:offer.sdp });
+}
+async function handleOffer(d) {
+  const pc=newPC(d.from);
+  await pc.setRemoteDescription({type:'offer',sdp:d.sdp});
+  const answer=await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  wsSend({ type:'answer', to:d.from, sdp:answer.sdp });
+}
+async function handleAnswer(d) {
+  const pc=peerConnections[d.from];
+  if(pc&&pc.signalingState!=='stable') await pc.setRemoteDescription({type:'answer',sdp:d.sdp});
+}
+async function handleIce(d) {
+  const pc=peerConnections[d.from];
+  if(pc) try{ await pc.addIceCandidate(d.candidate); }catch{}
+}
+function newPC(uid) {
+  if(peerConnections[uid]) peerConnections[uid].close();
+  const pc=new RTCPeerConnection({iceServers:ICE});
+  peerConnections[uid]=pc;
+  if(localStream) localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+  pc.ontrack=e=>{ const a=document.createElement('audio'); a.autoplay=true; a.srcObject=e.streams[0]; document.getElementById('remoteAudios').appendChild(a); };
+  pc.onicecandidate=e=>{ if(e.candidate) wsSend({type:'ice',to:uid,candidate:e.candidate}); };
+  pc.onconnectionstatechange=()=>{ if(pc.connectionState==='connected') toast('WebRTC','🔗','Соединён с '+getUser(uid).name,'success'); };
+  return pc;
+}
+
+let vadInterval=null;
+function startVAD() {
+  if(!localStream) return;
+  try {
+    const ctx=new AudioContext(), src=ctx.createMediaStreamSource(localStream), an=ctx.createAnalyser();
+    an.fftSize=256; src.connect(an);
+    const data=new Uint8Array(an.frequencyBinCount);
+    vadInterval=setInterval(()=>{
+      an.getByteFrequencyData(data);
+      const spk=data.reduce((a,b)=>a+b,0)/data.length>8;
+      wsSend({type:'speaking',speaking:spk});
+    },200);
+  }catch{}
+}
+
+function renderVCUsers() {
+  ['Gaming Lounge','Chill Zone'].forEach((room,i)=>{
+    const el=document.getElementById('vcUsers'+(i+1));
+    const cnt=document.getElementById('vcCount'+(i+1));
+    if(!el) return;
+    const users=vcRooms[room]||{};
+    if(cnt) cnt.textContent=Object.keys(users).length+'/32';
+    el.innerHTML=Object.entries(users).map(([uid,u])=>`<div class="vc-user${u.speaking?' spk':''}"><span class="vc-dot"></span>${esc(u.name)}</div>`).join('');
+  });
+}
+function updateVCBar() {
+  const el=document.getElementById('vbarUsers'); if(!el||!inVoice) return;
+  const users=vcRooms[currentVoiceRoom]||{};
+  el.innerHTML=Object.entries(users).map(([uid,u])=>`<div class="vbu${u.speaking?' spk':''}"><span class="vbu-dot"></span>${esc(u.name)}</div>`).join('');
+}
+
+// ══════════════════════════════════════
+// CALL
+// ══════════════════════════════════════
+window.startCall=function(uid,video){ wsSend({type:'call',to:uid,video}); toast(video?'Видеозвонок':'Звонок',video?'📹':'📞','Звоним '+getUser(uid).name+'...','info'); setTimeout(()=>toast('Звонок','📵','Нет ответа','error'),15000); };
+window.answerCall=function(){ closeModal('callModal'); if(window._callFrom) { wsSend({type:'call_answer',to:window._callFrom}); toast('Звонок','📞','Подключаемся...','info'); } };
+window.declineCall=function(){ if(window._callFrom) wsSend({type:'call_decline',to:window._callFrom}); closeModal('callModal'); };
+
+// ══════════════════════════════════════
+// MIC / DEAF
+// ══════════════════════════════════════
+window.toggleMic=function(){
+  micMuted=!micMuted;
+  if(localStream) localStream.getAudioTracks().forEach(t=>t.enabled=!micMuted);
+  const icon=micMuted?'🔇':'🎙';
+  ['micBtn','micBtnS'].forEach(id=>{const b=document.getElementById(id);if(!b)return;b.textContent=icon;b.classList.toggle('danger',micMuted);});
+  const vb=document.getElementById('vbMic');if(vb){vb.textContent=icon+' Mic';vb.classList.toggle('mut',micMuted);}
+};
+window.toggleDeaf=function(){
+  deafMuted=!deafMuted;
+  document.querySelectorAll('#remoteAudios audio').forEach(a=>a.muted=deafMuted);
+  ['deafBtn','vbSnd'].forEach(id=>{const b=document.getElementById(id);if(b)b.classList.toggle('danger',deafMuted);});
+};
+
+// ══════════════════════════════════════
+// MODE SWITCH
+// ══════════════════════════════════════
+window.switchMode=function(mode,icon,name){
+  currentMode=mode;
+  document.querySelectorAll('.ri').forEach(x=>x.classList.remove('act'));
+  if(mode==='dm'){
+    document.getElementById('railDM').classList.add('act');
+    document.getElementById('dmSidebar').style.display='flex';
+    document.getElementById('srvSidebar').style.display='none';
+    showFriends();
+  } else {
+    event.currentTarget.classList.add('act');
+    document.getElementById('dmSidebar').style.display='none';
+    document.getElementById('srvSidebar').style.display='flex';
+    document.getElementById('srvSbName').textContent=name||'Сервер';
+    openSrvCh(document.getElementById('chGeneral'),'general','Основной чат');
+  }
+};
+
+// ══════════════════════════════════════
+// PING
+// ══════════════════════════════════════
+window.showPing=function(){
+  let h=`<div class="ping-row"><div class="av-img av-32" style="background:${ME.color}">${ME.init}</div><div class="ping-name">Вы</div><div class="pb-wrap"><div class="pb-fill c-g-fill" style="width:10%"></div></div><div class="ping-ms c-g">~12ms</div></div>`;
+  Object.entries(onlineUsers).slice(0,8).forEach(([uid,u])=>{
+    const ms=15+Math.floor(Math.random()*80);
+    const cls=ms<50?'c-g':ms<100?'c-a':'c-r', fc=ms<50?'c-g-fill':ms<100?'c-a-fill':'c-r-fill';
+    h+=`<div class="ping-row"><div class="av-img av-32" style="background:${u.color}">${u.init}</div><div class="ping-name">${esc(u.name)}</div><div class="pb-wrap"><div class="pb-fill ${fc}" style="width:${Math.min(ms/2,100)}%"></div></div><div class="ping-ms ${cls}">${ms}ms</div></div>`;
+  });
+  document.getElementById('pingList').innerHTML=h;
+  openModal('pingModal');
+};
+
+// ══════════════════════════════════════
+// CREATE SERVER
+// ══════════════════════════════════════
+window.createSrv=function(){
+  const name=document.getElementById('srvNameInp').value.trim()||'Мой сервер';
+  closeModal('createSrvModal');
+  const rail=document.getElementById('rail');
+  const btn=document.createElement('button'); btn.className='ri'; btn.textContent=name[0].toUpperCase(); btn.title=name; btn.style.fontSize='14px';btn.style.fontWeight='700';
+  btn.onclick=()=>switchMode('server','?',name);
+  rail.insertBefore(btn, rail.querySelector('.rail-add'));
+  toast('Готово','🎉','"'+name+'" создан!','success');
+  setTimeout(()=>btn.click(),100);
+};
+
+// ══════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════
+function getUser(uid) {
+  if(uid===myUid) return {...ME, status:'online'};
+  const u=onlineUsers[uid];
+  if(u) return u;
+  const r=friendRequests.find(x=>x.uid===uid);
+  if(r) return {name:r.name,color:r.color,init:r.init,tag:r.tag,status:'online',activity:''};
+  return {name:uid,color:'#747f8d',init:'?',tag:'',status:'offline',activity:''};
+}
+function statusLabel(s){return s==='online'?'В сети':s==='idle'?'Не активен':s==='dnd'?'Не беспокоить':'Не в сети';}
+function tNow(){const n=new Date();return n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function stripHtml(s){return s.replace(/<[^>]+>/g,'');}
+window.autoResize=function(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,160)+'px';};
+window.handleKey=function(e,ctx,id){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ctx==='dm'?sendDM(id):sendSrv(currentSrvCh);}};
+window.putInp=function(id,txt){const el=document.getElementById(id);if(el){el.value=txt;el.focus();autoResize(el);}};
+window.openModal=function(id){document.getElementById(id).classList.add('vis');};
+window.closeModal=function(id){document.getElementById(id).classList.remove('vis');};
+window.copyInv=function(){navigator.clipboard.writeText(location.href).catch(()=>{});toast('Скопировано','📋','Ссылка скопирована','success');};
+document.addEventListener('click',e=>{document.querySelectorAll('.modal-bg.vis').forEach(b=>{if(e.target===b)b.classList.remove('vis');});});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.modal-bg.vis').forEach(b=>b.classList.remove('vis'));closePP();}if(e.key==='m'&&e.ctrlKey){e.preventDefault();toggleMic();}});
+
+window.toast=function(title,icon,body,type='info'){
+  const tc=document.getElementById('toastBox');
+  const t=document.createElement('div'); t.className='toast t-'+type;
+  t.innerHTML=`<div class="toast-title">${icon} ${title}</div><div class="toast-body">${esc(body)}</div>`;
+  tc.appendChild(t); setTimeout(()=>{if(t.parentNode)t.remove();},4000); t.onclick=()=>t.remove();
+};
+
+function setWsDot(c){const el=document.getElementById('wsDot');if(!el)return;el.style.color=c==='green'?'var(--green)':c==='amber'?'var(--amber)':'var(--red)';}
+function showStatus(msg,type){const el=document.getElementById('statusBar');if(!el)return;el.textContent=msg;el.className=`vis sb-${type==='connecting'?'connecting':type==='connected'?'connected':'error'}`;}
+function hideStatus(){const el=document.getElementById('statusBar');if(el)el.classList.remove('vis');}
+</script>
+</body>
+</html>
