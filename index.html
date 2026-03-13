@@ -488,16 +488,12 @@ let ppTarget = null;
 let currentMode = 'dm';
 
 const ICE = [
-  { urls:'stun:stun.l.google.com:19302' },
-  { urls:'stun:stun1.l.google.com:19302' },
-  { urls:'stun:stun.relay.metered.ca:80' },
-  { urls:'turn:standard.relay.metered.ca:80',    username:'83b67562085e93f1e1a14cd0', credential:'ncqBb2yq5RBvbTXx' },
-  { urls:'turn:standard.relay.metered.ca:80?transport=tcp', username:'83b67562085e93f1e1a14cd0', credential:'ncqBb2yq5RBvbTXx' },
-  { urls:'turn:standard.relay.metered.ca:443',   username:'83b67562085e93f1e1a14cd0', credential:'ncqBb2yq5RBvbTXx' },
-  { urls:'turns:standard.relay.metered.ca:443?transport=tcp', username:'83b67562085e93f1e1a14cd0', credential:'ncqBb2yq5RBvbTXx' },
-  { urls:'turn:openrelay.metered.ca:80',  username:'openrelayproject', credential:'openrelayproject' },
-  { urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' },
-  { urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
+  { urls:"stun:stun.l.google.com:19302" },
+  { urls:"stun:stun1.l.google.com:19302" },
+  { urls:"turn:coturn-production-8e7f.up.railway.app:3478", username:"voicelink", credential:"voicelink123" },
+  { urls:"turn:coturn-production-8e7f.up.railway.app:3478?transport=tcp", username:"voicelink", credential:"voicelink123" },
+  { urls:"turn:openrelay.metered.ca:80", username:"openrelayproject", credential:"openrelayproject" },
+  { urls:"turn:openrelay.metered.ca:443?transport=tcp", username:"openrelayproject", credential:"openrelayproject" },
 ];
 
 // Color picker
@@ -621,7 +617,8 @@ function handleWS(d) {
       toast('Звонок','📵', getUser(d.from).name+' отклонил', 'error');
       break;
     case 'voice_peers':
-      d.peers.forEach(peerUid => createOffer(peerUid));
+      // Wait for localStream to be ready before sending offers
+      setTimeout(() => d.peers.forEach(peerUid => createOffer(peerUid)), 500);
       break;
     case 'voice_update':
       vcRooms = d.rooms || {};
@@ -1002,26 +999,52 @@ async function createOffer(peerUid) {
 async function handleOffer(d) {
   const pc=newPC(d.from);
   await pc.setRemoteDescription({type:'offer',sdp:d.sdp});
+  await flushCandidates(d.from);
   const answer=await pc.createAnswer();
   await pc.setLocalDescription(answer);
   wsSend({ type:'answer', to:d.from, sdp:answer.sdp });
 }
 async function handleAnswer(d) {
   const pc=peerConnections[d.from];
-  if(pc&&pc.signalingState!=='stable') await pc.setRemoteDescription({type:'answer',sdp:d.sdp});
+  if(pc&&pc.signalingState!=='stable') { await pc.setRemoteDescription({type:'answer',sdp:d.sdp}); await flushCandidates(d.from); }
 }
+const pendingCandidates = {};
 async function handleIce(d) {
   const pc=peerConnections[d.from];
-  if(pc) try{ await pc.addIceCandidate(d.candidate); }catch{}
+  if(!pc) return;
+  if(pc.remoteDescription && pc.remoteDescription.type) {
+    try{ await pc.addIceCandidate(d.candidate); }catch{}
+  } else {
+    if(!pendingCandidates[d.from]) pendingCandidates[d.from]=[];
+    pendingCandidates[d.from].push(d.candidate);
+  }
+}
+async function flushCandidates(uid) {
+  const pc=peerConnections[uid];
+  if(!pc || !pendingCandidates[uid]) return;
+  for(const c of pendingCandidates[uid]) try{ await pc.addIceCandidate(c); }catch{}
+  delete pendingCandidates[uid];
 }
 function newPC(uid) {
   if(peerConnections[uid]) peerConnections[uid].close();
   const pc=new RTCPeerConnection({iceServers:ICE});
   peerConnections[uid]=pc;
   if(localStream) localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-  pc.ontrack=e=>{ const a=document.createElement('audio'); a.autoplay=true; a.srcObject=e.streams[0]; document.getElementById('remoteAudios').appendChild(a); };
+  pc.ontrack=e=>{
+    const a=document.createElement('audio');
+    a.autoplay=true; a.controls=false;
+    a.srcObject=e.streams[0];
+    document.getElementById('remoteAudios').appendChild(a);
+    a.play().catch(()=>{});
+    toast('WebRTC','🔊','Аудио получено от '+getUser(uid).name,'success');
+  };
   pc.onicecandidate=e=>{ if(e.candidate) wsSend({type:'ice',to:uid,candidate:e.candidate}); };
-  pc.onconnectionstatechange=()=>{ if(pc.connectionState==='connected') toast('WebRTC','🔗','Соединён с '+getUser(uid).name,'success'); };
+  pc.oniceconnectionstatechange=()=>{ console.log('ICE',uid,pc.iceConnectionState); };
+  pc.onconnectionstatechange=()=>{
+    console.log('PC',uid,pc.connectionState);
+    if(pc.connectionState==='connected') toast('WebRTC','🔗','Соединён с '+getUser(uid).name,'success');
+    if(pc.connectionState==='failed') { pc.restartIce(); toast('WebRTC','⚠️','Переподключаемся...','error'); }
+  };
   return pc;
 }
 
