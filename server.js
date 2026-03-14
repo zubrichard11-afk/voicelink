@@ -20,7 +20,7 @@ const server = http.createServer((req, res) => {
   } else { res.writeHead(404); res.end(); }
 });
 
-const wss = new WebSocketServer({ server, maxPayload: 256 * 1024 });
+const wss = new WebSocketServer({ server, maxPayload: 2 * 1024 * 1024 });
 
 const send = (uid, data) => {
   const u = users.get(uid);
@@ -40,7 +40,7 @@ const broadcastRoom = (room, data, skip = null) => {
   r.forEach(uid => { if (uid !== skip) { const u = users.get(uid); if (u && u.ws.readyState === 1) u.ws.send(m); } });
 };
 const onlineList = () => { const o = {}; users.forEach((u, uid) => { o[uid] = { name:u.name, color:u.color, init:u.init, tag:u.tag, status:u.status||'online', activity:u.activity||'' }; }); return o; };
-const roomList = () => { const r = {}; rooms.forEach((uids, room) => { r[room] = {}; uids.forEach(uid => { const u=users.get(uid); if(u) r[room][uid]={name:u.name,color:u.color,init:u.init,speaking:u.speaking||false}; }); }); return r; };
+const roomList = () => { const r = {}; rooms.forEach((uids, room) => { r[room] = {}; uids.forEach(uid => { const u=users.get(uid); if(u) r[room][uid]={name:u.name,color:u.color,init:u.init,speaking:u.speaking||false,screenSharing:u.screenSharing||false}; }); }); return r; };
 
 wss.on('connection', ws => {
   let me = null;
@@ -51,7 +51,6 @@ wss.on('connection', ws => {
       if (!me) return;
       const u = users.get(me);
       if (!u || !u.room) return;
-      // Forward audio to everyone else in the room
       const header = JSON.stringify({ type:'audio', from:me, name:u.name, color:u.color });
       const headerBuf = Buffer.from(header + '\n');
       const combined = Buffer.concat([headerBuf, raw]);
@@ -63,7 +62,7 @@ wss.on('connection', ws => {
 
     if (d.type === 'join') {
       me = d.uid;
-      users.set(me, { ws, name:d.name, color:d.color, init:d.init, tag:d.tag, status:'online', activity:'', speaking:false, room:null });
+      users.set(me, { ws, name:d.name, color:d.color, init:d.init, tag:d.tag, status:'online', activity:'', speaking:false, screenSharing:false, room:null });
       ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs }));
       dmMsgs.forEach((m, convId) => { if(convId.includes(me)) ws.send(JSON.stringify({ type:'dm_history', convId, msgs:m })); });
       broadcast({ type:'user_join', uid:me, user:{name:d.name,color:d.color,init:d.init,tag:d.tag,status:'online',activity:''} }, me);
@@ -95,19 +94,41 @@ wss.on('connection', ws => {
       case 'call':          send(d.to,{type:'incoming_call',from:me,name:users.get(me)?.name,color:users.get(me)?.color,init:users.get(me)?.init,video:d.video}); break;
       case 'call_answer':   send(d.to,{type:'call_answered',from:me}); break;
       case 'call_decline':  send(d.to,{type:'call_declined',from:me}); break;
+
+      // ── WebRTC signaling (screen share & peer video) ──
+      case 'rtc_offer':     send(d.to,{type:'rtc_offer',  from:me, sdp:d.sdp,  kind:d.kind||'screen'}); break;
+      case 'rtc_answer':    send(d.to,{type:'rtc_answer', from:me, sdp:d.sdp,  kind:d.kind||'screen'}); break;
+      case 'rtc_ice':       send(d.to,{type:'rtc_ice',    from:me, candidate:d.candidate}); break;
+
+      // ── Screen share state broadcast ──
+      case 'screen_start': {
+        const u=users.get(me);
+        if(u){u.screenSharing=true;}
+        broadcastRoom(u?.room||'',{type:'screen_start',uid:me,name:users.get(me)?.name},me);
+        broadcast({type:'voice_update',rooms:roomList()});
+        break;
+      }
+      case 'screen_stop': {
+        const u=users.get(me);
+        if(u){u.screenSharing=false;}
+        broadcastRoom(u?.room||'',{type:'screen_stop',uid:me},me);
+        broadcast({type:'voice_update',rooms:roomList()});
+        break;
+      }
+
       case 'join_voice': {
         const u=users.get(me);
         if(u?.room){const prev=rooms.get(u.room);if(prev){prev.delete(me);if(!prev.size)rooms.delete(u.room);}}
         if(!rooms.has(d.room)) rooms.set(d.room,new Set());
         rooms.get(d.room).add(me); u.room=d.room;
         broadcast({type:'voice_update',rooms:roomList()});
-        // notify others in room
         broadcastRoom(d.room,{type:'peer_joined',uid:me,name:u.name,color:u.color,init:u.init},me);
-        ws.send(JSON.stringify({type:'voice_joined',room:d.room,peers:[...rooms.get(d.room)].filter(x=>x!==me).map(uid=>{const u=users.get(uid);return{uid,name:u?.name,color:u?.color,init:u?.init};})}));
+        ws.send(JSON.stringify({type:'voice_joined',room:d.room,peers:[...rooms.get(d.room)].filter(x=>x!==me).map(uid=>{const u=users.get(uid);return{uid,name:u?.name,color:u?.color,init:u?.init,screenSharing:u?.screenSharing||false};})}));
         break;
       }
       case 'leave_voice': {
         const u=users.get(me);
+        if(u){u.screenSharing=false;}
         if(u?.room){const r=rooms.get(u.room);if(r){r.delete(me);if(!r.size)rooms.delete(u.room);}broadcastRoom(u.room,{type:'peer_left',uid:me});u.room=null;}
         broadcast({type:'voice_update',rooms:roomList()});
         break;
