@@ -616,7 +616,17 @@ function handleWS(d){
 // ══════════════════════════════════════
 async function startMicRelay(){
   try{
-    micStream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:SAMPLE_RATE,channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+    micStream=await navigator.mediaDevices.getUserMedia({audio:{
+    sampleRate:SAMPLE_RATE,channelCount:1,
+    echoCancellation:true,
+    noiseSuppression:true,
+    autoGainControl:true,
+    googEchoCancellation:true,
+    googNoiseSuppression:true,
+    googHighpassFilter:true,
+    googTypingNoiseDetection:true,
+    googAutoGainControl:true
+  },video:false});
   }catch(e){
     toast('Микрофон','🎙','Нет доступа к микрофону: '+e.message,'error');
     return false;
@@ -633,8 +643,10 @@ async function startMicRelay(){
     wsSendBinary(i16.buffer);
     // VAD
     const vol=f32.reduce((a,b)=>a+Math.abs(b),0)/f32.length;
-    const spk=vol>0.01;
+    const spk=vol>0.02;
     wsSend({type:'speaking',speaking:spk});
+    // Gate: only send audio if speaking (VAD)
+    if(!spk) return;
     // Update own indicator locally
     if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
       vcRooms[currentVoiceRoom][myUid].speaking=spk;
