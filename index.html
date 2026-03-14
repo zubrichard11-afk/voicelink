@@ -1356,16 +1356,17 @@ function startScreenRelay(){
     pending=false;
   }
 
-  function startWorkerTimer(interval){
-    // Inline worker — setInterval inside Worker is NOT throttled when tab loses focus
+  function startWorkerTimer(){
+    // 1) Web Worker setInterval — not throttled by tab visibility
+    const interval=Math.round(1000/SCREEN_FPS);
     const workerCode=`
       let t=null;
       self.onmessage=function(e){
         if(e.data==='start'){
           if(t) clearInterval(t);
-          t=setInterval(()=>self.postMessage('tick'), ${Math.round(1000/SCREEN_FPS)});
+          t=setInterval(()=>self.postMessage('tick'),${Math.round(1000/SCREEN_FPS)});
         } else if(e.data==='stop'){
-          clearInterval(t); t=null;
+          clearInterval(t);t=null;
         }
       };
     `;
@@ -1373,6 +1374,31 @@ function startScreenRelay(){
     worker=new Worker(URL.createObjectURL(blob));
     worker.onmessage=()=>sendFrame();
     worker.postMessage('start');
+
+    // 2) Play silent audio — Chrome won't throttle tabs that have active audio
+    // This is the most reliable trick to prevent background throttling
+    try{
+      const silentCtx=new AudioContext();
+      const buf=silentCtx.createBuffer(1,silentCtx.sampleRate*3,silentCtx.sampleRate);
+      // leave buffer silent (zeros)
+      function playSilent(){
+        if(!screenSharing){silentCtx.close();return;}
+        const src=silentCtx.createBufferSource();
+        src.buffer=buf;
+        src.connect(silentCtx.destination);
+        src.onended=playSilent; // loop forever while sharing
+        src.start();
+      }
+      playSilent();
+      window._silentCtx=silentCtx;
+    }catch(e){}
+
+    // 3) Wake lock — prevents screen dimming and CPU throttle (where supported)
+    if(navigator.wakeLock){
+      navigator.wakeLock.request('screen').then(lock=>{
+        window._wakeLock=lock;
+      }).catch(()=>{});
+    }
   }
 
   video.addEventListener('loadedmetadata',()=>{
@@ -1409,6 +1435,14 @@ function stopScreenRelayInternal(){
   if(window._screenRelayVideo){
     window._screenRelayVideo.srcObject=null;
     window._screenRelayVideo=null;
+  }
+  if(window._silentCtx){
+    window._silentCtx.close().catch(()=>{});
+    window._silentCtx=null;
+  }
+  if(window._wakeLock){
+    window._wakeLock.release().catch(()=>{});
+    window._wakeLock=null;
   }
 }
 
