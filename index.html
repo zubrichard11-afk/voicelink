@@ -421,8 +421,8 @@ let micStream=null;
 let micProcessor=null;
 let audioWorklet=null;
 const SAMPLE_RATE=16000;
-const CHUNK_MS=40;
-const CHUNK_SAMPLES=SAMPLE_RATE*CHUNK_MS/1000; // 640
+const CHUNK_MS=50;
+const CHUNK_SAMPLES=1024; // power of 2
 
 // color picker
 const cp=document.getElementById('colorPicker');
