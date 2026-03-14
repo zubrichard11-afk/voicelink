@@ -241,6 +241,44 @@ input,textarea{font-family:var(--font)}
 .sb-connecting{background:var(--amber);color:#000}
 .sb-connected{background:var(--green);color:#fff}
 .sb-error{background:var(--red);color:#fff}
+
+/* CALL PANEL */
+.call-panel{position:fixed;bottom:0;left:72px;right:0;height:72px;background:#1a1d27;border-top:1px solid rgba(255,255,255,0.08);display:none;align-items:center;padding:0 20px;gap:16px;z-index:100}
+.call-panel.vis{display:flex}
+.cp-info{display:flex;align-items:center;gap:10px;min-width:200px}
+.cp-av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0;position:relative}
+.cp-av .spk-ring{position:absolute;inset:-3px;border-radius:50%;border:2px solid var(--green);opacity:0;transition:opacity .2s}
+.cp-av.spk .spk-ring{opacity:1;animation:ring-pulse 1s ease-in-out infinite}
+@keyframes ring-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.cp-name{font-size:13px;font-weight:700}
+.cp-status{font-size:11px;color:var(--green)}
+.cp-participants{display:flex;gap:6px;flex:1;align-items:center;flex-wrap:wrap}
+.cp-part{display:flex;align-items:center;gap:5px;background:var(--bg3);border-radius:20px;padding:4px 10px;font-size:12px;border:1px solid transparent;transition:border-color .2s}
+.cp-part.spk{border-color:var(--green);color:var(--green)}
+.cp-part-av{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0}
+.cp-controls{display:flex;gap:6px;margin-left:auto;align-items:center}
+.cp-btn{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;font-size:18px;transition:all .15s;cursor:pointer}
+.cp-btn-mic{background:var(--bg3);color:var(--text0)}.cp-btn-mic:hover{background:var(--bg4)}
+.cp-btn-mic.muted{background:rgba(237,66,69,.2);color:var(--red)}
+.cp-btn-deaf{background:var(--bg3);color:var(--text0)}.cp-btn-deaf:hover{background:var(--bg4)}
+.cp-btn-deaf.muted{background:rgba(237,66,69,.2);color:var(--red)}
+.cp-btn-screen{background:var(--bg3);color:var(--text0)}.cp-btn-screen:hover{background:var(--bg4)}
+.cp-btn-screen.active{background:rgba(88,101,242,.3);color:var(--accent)}
+.cp-btn-end{background:var(--red);color:#fff}.cp-btn-end:hover{background:#c0282b;transform:scale(1.05)}
+.cp-vol{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
+.cp-vol input{width:70px;accent-color:var(--accent)}
+.cp-room{font-size:10px;color:var(--text2);white-space:nowrap}
+
+/* Incoming call overlay */
+.call-incoming{position:fixed;bottom:80px;right:20px;background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:16px 20px;width:300px;z-index:200;box-shadow:0 16px 48px rgba(0,0,0,.7);animation:fadein .2s ease}
+.ci-av{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;margin:0 auto 8px;animation:ring 1.5s ease-in-out infinite}
+.ci-name{font-size:16px;font-weight:700;text-align:center;margin-bottom:2px}
+.ci-status{font-size:12px;color:var(--text2);text-align:center;margin-bottom:14px}
+.ci-btns{display:flex;gap:10px;justify-content:center}
+.ci-btn{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;border:none;transition:all .15s;cursor:pointer}
+.ci-ans{background:var(--green);color:#fff}.ci-ans:hover{background:#1a7a42;transform:scale(1.05)}
+.ci-dec{background:var(--red);color:#fff}.ci-dec:hover{background:#c0282b;transform:scale(1.05)}
+
 #toastBox{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999}
 .toast{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:11px 16px;min-width:240px;max-width:320px;animation:fadein .2s ease;box-shadow:0 8px 24px rgba(0,0,0,.5);cursor:pointer}
 .toast-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:3px}
@@ -390,6 +428,37 @@ input,textarea{font-family:var(--font)}
   </div>
 </div>
 
+
+<!-- CALL PANEL -->
+<div class="call-panel" id="callPanel">
+  <div class="cp-info">
+    <div class="cp-av" id="cpAv"><div class="spk-ring"></div></div>
+    <div>
+      <div class="cp-name" id="cpName">—</div>
+      <div class="cp-status" id="cpStatus">🔊 Голосовой звонок</div>
+    </div>
+  </div>
+  <div class="cp-participants" id="cpParticipants"></div>
+  <div class="cp-controls">
+    <div class="cp-vol">🔊<input type="range" id="cpVolume" min="0" max="200" value="100" oninput="setVolume(this.value)"></div>
+    <button class="cp-btn cp-btn-screen" id="cpScreen" onclick="toggleScreen()" title="Демонстрация экрана">🖥</button>
+    <button class="cp-btn cp-btn-mic" id="cpMic" onclick="toggleMic()" title="Микрофон (Ctrl+M)">🎙</button>
+    <button class="cp-btn cp-btn-deaf" id="cpDeaf" onclick="toggleDeaf()" title="Звук">🎧</button>
+    <button class="cp-btn cp-btn-end" onclick="leaveVoice()" title="Завершить">📵</button>
+  </div>
+</div>
+
+<!-- INCOMING CALL -->
+<div class="call-incoming" id="callIncoming" style="display:none">
+  <div class="ci-av" id="ciAv"></div>
+  <div class="ci-name" id="ciName">—</div>
+  <div class="ci-status" id="ciStatus">Входящий звонок</div>
+  <div class="ci-btns">
+    <button class="ci-btn ci-ans" onclick="answerCall()">📞</button>
+    <button class="ci-btn ci-dec" onclick="declineCall()">📵</button>
+  </div>
+</div>
+
 <div id="toastBox"></div>
 
 <script>
@@ -525,11 +594,8 @@ function handleWS(d){
       }break;
     case 'friend_accept': friends.add(d.from);toast('Друг добавлен','🎉',d.name+' принял запрос!','success');renderDMList();break;
     case 'incoming_call':
-      document.getElementById('callAv').style.background=d.color;
-      document.getElementById('callAv').textContent=d.init;
-      document.getElementById('callName').textContent=d.name;
-      openModal('callModal');window._callFrom=d.from;
-      setTimeout(()=>closeModal('callModal'),30000);break;
+      showIncomingCall(d.from, d.name, d.color, d.init);
+      break;
     case 'call_declined': toast('Звонок','📵',getUser(d.from).name+' отклонил','error');break;
     case 'voice_update': vcRooms=d.rooms||{};renderVCUsers();updateVCBar();break;
     case 'voice_joined':
@@ -567,7 +633,12 @@ async function startMicRelay(){
     wsSendBinary(i16.buffer);
     // VAD
     const vol=f32.reduce((a,b)=>a+Math.abs(b),0)/f32.length;
-    wsSend({type:'speaking',speaking:vol>0.01});
+    const spk=vol>0.01;
+    wsSend({type:'speaking',speaking:spk});
+    // Update own indicator locally
+    if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
+      vcRooms[currentVoiceRoom][myUid].speaking=spk;
+    renderVCUsers();updateVCBar();
   };
   src.connect(micProcessor);
   micProcessor.connect(audioCtx.destination);
@@ -919,10 +990,12 @@ window.leaveVoice=function(){
   wsSend({type:'leave_voice'});
   stopMicRelay();
   document.getElementById('vbar').classList.remove('vis');
+  document.getElementById('callPanel').classList.remove('vis');
   toast('Голосовой','👋','Вы вышли','info');
 };
 
 function renderVCUsers(){
+  updateCallPanel();
   ['Gaming Lounge','Chill Zone'].forEach((room,i)=>{
     const el=document.getElementById('vcUsers'+(i+1));
     const cnt=document.getElementById('vcCount'+(i+1));
@@ -941,12 +1014,37 @@ function updateVCBar(){
 // ══════════════════════════════════════
 // CALL (через голосовой канал)
 // ══════════════════════════════════════
-window.startCall=function(uid){
+window.startCall=async function(uid){
   wsSend({type:'call',to:uid});
-  toast('Звонок','📞','Звоним '+getUser(uid).name+'... (войди в голосовой канал)','info');
+  // Start private DM call - use uid as room name
+  const room = 'dm:'+[myUid,uid].sort().join('_');
+  await joinVoice(room, uid);
+  toast('Звонок','📞','Звоним '+getUser(uid).name+'...','info');
 };
-window.answerCall=function(){closeModal('callModal');toast('Звонок','📞','Зайди в голосовой канал Gaming Lounge','info');};
-window.declineCall=function(){if(window._callFrom)wsSend({type:'call_decline',to:window._callFrom});closeModal('callModal');};
+
+function showIncomingCall(fromUid, name, color, init){
+  const el = document.getElementById('callIncoming');
+  document.getElementById('ciAv').style.background = color;
+  document.getElementById('ciAv').textContent = init;
+  document.getElementById('ciName').textContent = name;
+  document.getElementById('ciStatus').textContent = 'Входящий звонок';
+  window._callFrom = fromUid;
+  window._callRoom = 'dm:'+[myUid,fromUid].sort().join('_');
+  el.style.display = 'block';
+  if(window._callTimeout) clearTimeout(window._callTimeout);
+  window._callTimeout = setTimeout(()=>{ el.style.display='none'; }, 30000);
+}
+
+window.answerCall=async function(){
+  document.getElementById('callIncoming').style.display='none';
+  if(!window._callFrom) return;
+  wsSend({type:'call_answer',to:window._callFrom});
+  await joinVoice(window._callRoom, window._callFrom);
+};
+window.declineCall=function(){
+  document.getElementById('callIncoming').style.display='none';
+  if(window._callFrom) wsSend({type:'call_decline',to:window._callFrom});
+};
 
 // ══════════════════════════════════════
 // MIC / DEAF
@@ -956,11 +1054,30 @@ window.toggleMic=function(){
   const icon=micMuted?'🔇':'🎙';
   ['micBtn','micBtnS'].forEach(id=>{const b=document.getElementById(id);if(!b)return;b.textContent=icon;b.classList.toggle('danger',micMuted);});
   const vb=document.getElementById('vbMic');if(vb){vb.textContent=icon+' Mic';vb.classList.toggle('mut',micMuted);}
+  const cp=document.getElementById('cpMic');if(cp){cp.textContent=icon;cp.classList.toggle('muted',micMuted);}
   toast(micMuted?'Замьючен':'Размьючен',icon,'','info');
 };
 window.toggleDeaf=function(){
   deafMuted=!deafMuted;
   ['deafBtn','vbSnd'].forEach(id=>{const b=document.getElementById(id);if(b)b.classList.toggle('danger',deafMuted);});
+  const cp=document.getElementById('cpDeaf');if(cp)cp.classList.toggle('muted',deafMuted);
+};
+window.setVolume=function(val){
+  const gain=val/100;
+  // apply to all playing audio nodes via gainNode if we had one - for now just store
+  window._volumeGain=gain;
+  document.getElementById('cpVolume').value=val;
+};
+window.toggleScreen=function(){
+  const btn=document.getElementById('cpScreen');
+  if(!btn) return;
+  if(btn.classList.contains('active')){
+    btn.classList.remove('active');
+    toast('Демонстрация','🖥','Остановлена','info');
+  } else {
+    btn.classList.add('active');
+    toast('Демонстрация','🖥','Скоро будет доступна!','info');
+  }
 };
 
 // ══════════════════════════════════════
