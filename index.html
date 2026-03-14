@@ -981,19 +981,55 @@ function updateReqBadge(){const b=document.getElementById('reqBadge');if(!b)retu
 // ══════════════════════════════════════
 // VOICE
 // ══════════════════════════════════════
-window.joinVoice=function(room){
+window.joinVoice=function(room, peerId){
   if(inVoice&&currentVoiceRoom===room){toast('Голосовой','ℹ️','Вы уже в этом канале','info');return;}
   if(inVoice) leaveVoice();
   inVoice=true;currentVoiceRoom=room;
+  window._voicePeerId=peerId||null;
+  const isDM=room.startsWith('dm:');
+  const peerName=peerId?getUser(peerId).name:'';
+  const displayName=isDM?('📞 '+peerName):('🔊 '+room);
   document.getElementById('vbar').classList.add('vis');
-  document.getElementById('vbarRoom').textContent='🔊 '+room;
+  document.getElementById('vbarRoom').textContent=displayName;
+  // update call panel
+  const cpName=document.getElementById('cpName');
+  const cpStatus=document.getElementById('cpStatus');
+  const cpAv=document.getElementById('cpAv');
+  if(isDM&&peerId){
+    const u=getUser(peerId);
+    if(cpAv){cpAv.style.background=u.color;cpAv.innerHTML='<div class="spk-ring"></div>'+u.init;}
+    if(cpName) cpName.textContent=u.name;
+    if(cpStatus) cpStatus.textContent='📞 Голосовой звонок';
+  } else {
+    if(cpAv){cpAv.style.background='#5865f2';cpAv.innerHTML='<div class="spk-ring"></div>🔊';}
+    if(cpName) cpName.textContent=room;
+    if(cpStatus) cpStatus.textContent='🔊 Голосовой канал';
+  }
+  const panel=document.getElementById('callPanel');
+  if(panel) panel.classList.add('vis');
   wsSend({type:'join_voice',room});
   getRemoteCtx();
-  toast('Голосовой','🔊','Подключаемся к "'+room+'"...','info');
   startMicRelay().then(ok=>{
-    if(ok) toast('Голосовой','🎙','Микрофон подключён!','success');
-    else toast('Голосовой','🔊','В канале (без микрофона)','info');
+    if(!ok) toast('Голосовой','🔊','В канале (без микрофона)','info');
   });
+};
+
+function updateCallPanel(){
+  const el=document.getElementById('cpParticipants');
+  if(!el||!inVoice)return;
+  const users=vcRooms[currentVoiceRoom]||{};
+  let html=`<div class="cp-part"><div class="cp-part-av" style="background:${ME.color}">${ME.init}</div>${esc(ME.name)} (я)</div>`;
+  html+=Object.entries(users).map(([uid,u])=>
+    `<div class="cp-part${u.speaking?' spk':''}"><div class="cp-part-av" style="background:${u.color}">${u.init}</div>${esc(u.name)}</div>`
+  ).join('');
+  el.innerHTML=html;
+}
+
+window.setVolume=function(val){ window._volumeGain=val/100; };
+window.toggleScreen=function(){
+  const btn=document.getElementById('cpScreen');if(!btn)return;
+  const active=btn.classList.toggle('active');
+  toast('Демонстрация','🖥',active?'Скоро будет доступна!':'Остановлена','info');
 };
 
 window.leaveVoice=function(){
