@@ -891,16 +891,18 @@ function updateReqBadge(){const b=document.getElementById('reqBadge');if(!b)retu
 // ══════════════════════════════════════
 // VOICE
 // ══════════════════════════════════════
-window.joinVoice=async function(room){
+window.joinVoice=function(room){
   if(inVoice&&currentVoiceRoom===room){toast('Голосовой','ℹ️','Вы уже в этом канале','info');return;}
   if(inVoice) leaveVoice();
-  const ok=await startMicRelay();
   inVoice=true;currentVoiceRoom=room;
   document.getElementById('vbar').classList.add('vis');
   document.getElementById('vbarRoom').textContent='🔊 '+room;
   wsSend({type:'join_voice',room});
-  if(!ok) toast('Голосовой','🔊','В канале (без микрофона)','info');
-  else toast('Голосовой','🔊','Вы в "'+room+'" — голос через сервер','success');
+  toast('Голосовой','🔊','Подключаемся к "'+room+'"...','info');
+  startMicRelay().then(ok=>{
+    if(ok) toast('Голосовой','🎙','Микрофон подключён!','success');
+    else toast('Голосовой','🔊','В канале (без микрофона)','info');
+  });
 };
 
 window.leaveVoice=function(){
