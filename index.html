@@ -581,7 +581,14 @@ function stopMicRelay(){
 }
 
 // Incoming audio from server
-const remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
+let remoteCtx=null;
+function getRemoteCtx(){
+  if(!remoteCtx){
+    remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
+  }
+  if(remoteCtx.state==='suspended') remoteCtx.resume();
+  return remoteCtx;
+}
 function handleAudioChunk(buf){
   if(deafMuted) return;
   // buf = header\npcm_i16
@@ -898,6 +905,7 @@ window.joinVoice=function(room){
   document.getElementById('vbar').classList.add('vis');
   document.getElementById('vbarRoom').textContent='🔊 '+room;
   wsSend({type:'join_voice',room});
+  getRemoteCtx();
   toast('Голосовой','🔊','Подключаемся к "'+room+'"...','info');
   startMicRelay().then(ok=>{
     if(ok) toast('Голосовой','🎙','Микрофон подключён!','success');
