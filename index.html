@@ -639,12 +639,17 @@ function handleWS(d){
   switch(d.type){
     case 'init':
       onlineUsers=d.users||{};vcRooms=d.rooms||{};
+      if(!window._userCache) window._userCache={};
+      Object.assign(window._userCache, onlineUsers);
       if(d.msgs){srvMsgs.general=d.msgs.general||[];srvMsgs.gaming=d.msgs.gaming||[];srvMsgs.dev=d.msgs.dev||[];}
       renderDMList();renderVCUsers();
       if(currentView.startsWith('srv:')) renderSrvMsgs(currentSrvCh);
       break;
     case 'user_join':
-      onlineUsers[d.uid]=d.user;renderDMList();renderVCUsers();
+      onlineUsers[d.uid]=d.user;
+      if(!window._userCache) window._userCache={};
+      window._userCache[d.uid]=d.user;
+      renderDMList();renderVCUsers();
       toast('Онлайн','🟢',d.user.name+' вошёл','info');
       break;
     case 'user_leave': delete onlineUsers[d.uid];renderDMList();renderVCUsers();break;
@@ -1373,7 +1378,15 @@ function getUser(uid){
   const u=onlineUsers[uid];if(u)return u;
   const r=friendRequests.find(x=>x.uid===uid);
   if(r)return{name:r.name,color:r.color,init:r.init,tag:r.tag,status:'online',activity:''};
-  return{name:uid,color:'#747f8d',init:'?',tag:'',status:'offline',activity:''};
+  // Try to find name from DM history
+  if(dmConvs[uid]){
+    const msgs=dmConvs[uid];
+    const m=msgs.find(x=>x.from===uid);
+    if(m&&m.fromName) return{name:m.fromName,color:m.fromColor||'#747f8d',init:m.fromInit||m.fromName[0].toUpperCase(),tag:'',status:'offline',activity:''};
+  }
+  // Try cached users
+  if(window._userCache&&window._userCache[uid]) return window._userCache[uid];
+  return{name:uid.slice(0,8)+'...',color:'#747f8d',init:'?',tag:'',status:'offline',activity:''};
 }
 function statusLabel(s){return s==='online'?'В сети':s==='idle'?'Не активен':s==='dnd'?'Не беспокоить':'Не в сети';}
 function tNow(){const n=new Date();return n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');}
