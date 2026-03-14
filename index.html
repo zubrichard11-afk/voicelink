@@ -620,7 +620,17 @@ let screenSharing=false;
 let screenStream=null;
 const rtcPeers=new Map();
 const rtcScreenVideos=new Map();
-const RTC_CONFIG={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
+const RTC_CONFIG={
+  iceServers:[
+    {urls:'stun:stun.l.google.com:19302'},
+    {urls:'stun:stun1.l.google.com:19302'},
+    {urls:'stun:stun.relay.metered.ca:80'},
+    {urls:'turn:global.relay.metered.ca:80',  username:'openrelayproject',credential:'openrelayproject'},
+    {urls:'turn:global.relay.metered.ca:80?transport=tcp',username:'openrelayproject',credential:'openrelayproject'},
+    {urls:'turn:global.relay.metered.ca:443', username:'openrelayproject',credential:'openrelayproject'},
+    {urls:'turns:global.relay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'},
+  ]
+};
 let cwMinimized=false;
 let inVoice=false,currentVoiceRoom='';
 let ppTarget=null;
@@ -799,26 +809,28 @@ async function startMicRelay(){
     toast('Микрофон','🎙','Нет доступа к микрофону: '+e.message,'error');
     return false;
   }
-  audioCtx=new AudioContext({sampleRate:SAMPLE_RATE});
+  audioCtx=new AudioContext({sampleRate:SAMPLE_RATE,latencyHint:'interactive'});
+  if(audioCtx.state==='suspended') await audioCtx.resume();
   const src=audioCtx.createMediaStreamSource(micStream);
   micProcessor=audioCtx.createScriptProcessor(CHUNK_SAMPLES,1,1);
   micProcessor.onaudioprocess=e=>{
     if(micMuted||!inVoice) return;
     const f32=e.inputBuffer.getChannelData(0);
-    // Convert to Int16
+    // VAD
+    const vol=f32.reduce((a,b)=>a+Math.abs(b),0)/f32.length;
+    const spk=vol>0.008;
+    // Convert to Int16 and send
     const i16=new Int16Array(f32.length);
     for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
     wsSendBinary(i16.buffer);
-    // VAD
-    const vol=f32.reduce((a,b)=>a+Math.abs(b),0)/f32.length;
-    const spk=vol>0.02;
-    wsSend({type:'speaking',speaking:spk});
-    // Gate: only send audio if speaking (VAD)
-    if(!spk) return;
-    // Update own indicator locally
-    if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
-      vcRooms[currentVoiceRoom][myUid].speaking=spk;
-    renderVCUsers();updateVCBar();
+    // Speaking indicator
+    const prevSpk=vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking;
+    if(spk!==prevSpk){
+      wsSend({type:'speaking',speaking:spk});
+      if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
+        vcRooms[currentVoiceRoom][myUid].speaking=spk;
+      renderVCUsers();updateVCBar();
+    }
   };
   src.connect(micProcessor);
   micProcessor.connect(audioCtx.destination);
@@ -837,9 +849,17 @@ function getRemoteCtx(){
   if(!remoteCtx){
     remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
   }
-  if(remoteCtx.state==='suspended') remoteCtx.resume();
+  if(remoteCtx.state==='suspended'||remoteCtx.state==='interrupted'){
+    remoteCtx.resume().catch(()=>{});
+  }
   return remoteCtx;
 }
+// Resume audio context on any user interaction
+function ensureAudioResumed(){
+  if(remoteCtx&&remoteCtx.state==='suspended') remoteCtx.resume().catch(()=>{});
+}
+document.addEventListener('click', ensureAudioResumed, {once:false});
+document.addEventListener('keydown', ensureAudioResumed, {once:false});
 function handleAudioChunk(buf){
   if(deafMuted) return;
   const bytes=new Uint8Array(buf);
