@@ -618,9 +618,8 @@ let currentSrvCh='general';
 let micMuted=false,deafMuted=false;
 let screenSharing=false;
 let screenStream=null;
-// WebRTC for screen share
-const rtcPeers=new Map(); // uid -> RTCPeerConnection
-const rtcScreenVideos=new Map(); // uid -> MediaStream (received screen)
+const rtcPeers=new Map();
+const rtcScreenVideos=new Map();
 const RTC_CONFIG={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
 let cwMinimized=false;
 let inVoice=false,currentVoiceRoom='';
@@ -748,14 +747,15 @@ function handleWS(d){
     case 'voice_update': vcRooms=d.rooms||{};renderVCUsers();updateVCBar();break;
     case 'voice_joined':
       toast('Голосовой','🔊','В канале: '+(d.peers.length+1)+' чел.','success');
-      // If someone is already sharing screen, request their offer
       (d.peers||[]).forEach(p=>{ if(p.screenSharing) rtcRequestScreen(p.uid); });
       break;
     case 'peer_joined':
       toast('Голосовой','👤',d.name+' зашёл в канал','info');break;
     case 'peer_left':
-      toast('Голосовой','👋',getUser(d.uid).name+' вышел','info');
+      toast('Голосовой','👋',(getUser(d.uid).name||d.uid)+' вышел','info');
       rtcClosePeer(d.uid);
+      rtcScreenVideos.delete(d.uid);
+      if(inVoice)updateCallWindow();
       break;
     case 'speaking':
       if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][d.uid])
@@ -763,22 +763,18 @@ function handleWS(d){
       renderVCUsers();updateVCBar();
       if(inVoice)updateCallWindow();
       break;
-
-    // ── WebRTC signaling ──
     case 'rtc_offer': rtcHandleOffer(d.from,d.sdp,d.kind); break;
     case 'rtc_answer': rtcHandleAnswer(d.from,d.sdp); break;
     case 'rtc_ice': rtcHandleIce(d.from,d.candidate); break;
-
-    // ── Screen share events from peers ──
     case 'screen_start':
-      toast('Демонстрация','🖥',getUser(d.uid).name+' начал демонстрацию','info');
+      toast('Демонстрация','🖥',(getUser(d.uid).name||d.uid)+' начал демонстрацию','info');
       rtcRequestScreen(d.uid);
       break;
     case 'screen_stop':
-      toast('Демонстрация','🖥',getUser(d.uid).name+' остановил демонстрацию','info');
+      toast('Демонстрация','🖥',(getUser(d.uid).name||d.uid)+' остановил демонстрацию','info');
       rtcClosePeer(d.uid);
       rtcScreenVideos.delete(d.uid);
-      updateCallWindow();
+      if(inVoice)updateCallWindow();
       break;
   }
 }
@@ -1222,19 +1218,15 @@ window.setVolume=function(val){
 };
 
 window.toggleScreenShare=async function(){
-  if(screenSharing){
-    stopScreenShare();
-    return;
-  }
+  if(screenSharing){ stopScreenShare(); return; }
   try{
-    screenStream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30,width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:false});
+    screenStream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:false});
     screenSharing=true;
-    const btn=document.getElementById('cwScreenBtn');if(btn)btn.classList.add('on');
-    const cpBtn=document.getElementById('cpScreen');if(cpBtn)cpBtn.classList.add('active');
+    document.getElementById('cwScreenBtn')?.classList.add('on');
+    document.getElementById('cpScreen')?.classList.add('active');
     updateCallWindow();
     toast('Демонстрация','🖥','Демонстрация экрана начата','success');
     screenStream.getVideoTracks()[0].onended=()=>stopScreenShare();
-    // Notify server and send WebRTC offers to all peers in room
     wsSend({type:'screen_start'});
     rtcBroadcastScreen();
   }catch(e){
@@ -1245,60 +1237,46 @@ window.toggleScreenShare=async function(){
 function stopScreenShare(){
   screenSharing=false;
   if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
-  const btn=document.getElementById('cwScreenBtn');if(btn)btn.classList.remove('on');
-  const cpBtn=document.getElementById('cpScreen');if(cpBtn)cpBtn.classList.remove('active');
-  // Close all outgoing screen peer connections
-  rtcPeers.forEach((pc,uid)=>pc.close());
-  rtcPeers.clear();
+  document.getElementById('cwScreenBtn')?.classList.remove('on');
+  document.getElementById('cpScreen')?.classList.remove('active');
+  rtcPeers.forEach(pc=>pc.close()); rtcPeers.clear();
   wsSend({type:'screen_stop'});
   updateCallWindow();
   toast('Демонстрация','🖥','Остановлена','info');
 }
 
 // ── WebRTC helpers ──
-
 function rtcCreatePeer(uid){
   if(rtcPeers.has(uid)) rtcPeers.get(uid).close();
   const pc=new RTCPeerConnection(RTC_CONFIG);
   rtcPeers.set(uid,pc);
-  pc.onicecandidate=e=>{
-    if(e.candidate) wsSend({type:'rtc_ice',to:uid,candidate:e.candidate});
-  };
+  pc.onicecandidate=e=>{if(e.candidate) wsSend({type:'rtc_ice',to:uid,candidate:e.candidate});};
   pc.ontrack=e=>{
     if(e.streams&&e.streams[0]){
       rtcScreenVideos.set(uid,e.streams[0]);
-      updateCallWindow();
+      if(inVoice)updateCallWindow();
     }
   };
   pc.onconnectionstatechange=()=>{
-    if(pc.connectionState==='failed'||pc.connectionState==='closed'){
-      rtcPeers.delete(uid);
-    }
+    if(pc.connectionState==='failed'||pc.connectionState==='closed') rtcPeers.delete(uid);
   };
   return pc;
 }
-
 function rtcClosePeer(uid){
   if(rtcPeers.has(uid)){rtcPeers.get(uid).close();rtcPeers.delete(uid);}
 }
-
-// We are sharing screen — send offer to all peers in room
 async function rtcBroadcastScreen(){
   if(!screenStream||!inVoice) return;
-  const peers=Object.keys(vcRooms[currentVoiceRoom]||{});
-  for(const uid of peers){
-    if(uid===myUid) continue;
+  for(const uid of Object.keys(vcRooms[currentVoiceRoom]||{})){
     try{
       const pc=rtcCreatePeer(uid);
       screenStream.getTracks().forEach(t=>pc.addTrack(t,screenStream));
       const offer=await pc.createOffer();
       await pc.setLocalDescription(offer);
       wsSend({type:'rtc_offer',to:uid,sdp:pc.localDescription,kind:'screen'});
-    }catch(e){console.warn('rtcBroadcastScreen err',e);}
+    }catch(e){console.warn('rtcBroadcastScreen',uid,e);}
   }
 }
-
-// Peer wants our screen (joined after we started sharing)
 async function rtcSendScreenTo(uid){
   if(!screenStream) return;
   try{
@@ -1307,23 +1285,13 @@ async function rtcSendScreenTo(uid){
     const offer=await pc.createOffer();
     await pc.setLocalDescription(offer);
     wsSend({type:'rtc_offer',to:uid,sdp:pc.localDescription,kind:'screen'});
-  }catch(e){console.warn('rtcSendScreenTo err',e);}
+  }catch(e){console.warn('rtcSendScreenTo',e);}
 }
-
-// Someone is sharing screen, request it
-async function rtcRequestScreen(uid){
-  // We send an empty offer so they know to send us their screen
-  // Actually: we wait for them to offer us — triggered by screen_start broadcast
-  // If we join late (voice_joined), we need to ask them
+function rtcRequestScreen(uid){
   wsSend({type:'rtc_offer',to:uid,sdp:null,kind:'request'});
 }
-
 async function rtcHandleOffer(fromUid,sdp,kind){
-  if(kind==='request'){
-    // Someone wants our screen
-    if(screenSharing&&screenStream) rtcSendScreenTo(fromUid);
-    return;
-  }
+  if(kind==='request'){ if(screenSharing&&screenStream) rtcSendScreenTo(fromUid); return; }
   if(!sdp) return;
   try{
     const pc=rtcCreatePeer(fromUid);
@@ -1331,24 +1299,15 @@ async function rtcHandleOffer(fromUid,sdp,kind){
     const answer=await pc.createAnswer();
     await pc.setLocalDescription(answer);
     wsSend({type:'rtc_answer',to:fromUid,sdp:pc.localDescription,kind});
-  }catch(e){console.warn('rtcHandleOffer err',e);}
+  }catch(e){console.warn('rtcHandleOffer',e);}
 }
-
 async function rtcHandleAnswer(fromUid,sdp){
-  if(!sdp) return;
-  const pc=rtcPeers.get(fromUid);
-  if(!pc) return;
-  try{
-    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-  }catch(e){console.warn('rtcHandleAnswer err',e);}
+  const pc=rtcPeers.get(fromUid); if(!pc||!sdp) return;
+  try{ await pc.setRemoteDescription(new RTCSessionDescription(sdp)); }catch(e){console.warn('rtcHandleAnswer',e);}
 }
-
 async function rtcHandleIce(fromUid,candidate){
-  const pc=rtcPeers.get(fromUid);
-  if(!pc||!candidate) return;
-  try{
-    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-  }catch(e){}
+  const pc=rtcPeers.get(fromUid); if(!pc||!candidate) return;
+  try{ await pc.addIceCandidate(new RTCIceCandidate(candidate)); }catch(e){}
 }
 
 window.toggleCWSize=function(){
@@ -1370,59 +1329,52 @@ function updateCallWindow(){
   const body=document.getElementById('cwBody');
   const side=document.getElementById('cwSide');
   if(!body||!side) return;
-  const users=vcRooms[currentVoiceRoom]||{};
-  const allUsers=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true},...Object.entries(users).map(([uid,u])=>({uid,...u,isMe:false}))];
+  const roomUsers=vcRooms[currentVoiceRoom]||{};
+  const allUsers=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true},
+    ...Object.entries(roomUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
   const count=allUsers.length;
 
-  // Collect active screen streams: own + peers
+  // Collect active screen streams
   const activeScreens=[];
   if(screenSharing&&screenStream) activeScreens.push({uid:myUid,name:ME.name,stream:screenStream,isMe:true});
   rtcScreenVideos.forEach((stream,uid)=>{
-    if(stream.active){
-      const u=users[uid]||{};
-      activeScreens.push({uid,name:u.name||uid,stream,isMe:false});
-    }
+    if(stream&&stream.active){ const u=roomUsers[uid]||{}; activeScreens.push({uid,name:u.name||uid,stream,isMe:false}); }
   });
 
   if(activeScreens.length>0){
-    body.style.flexDirection='column';
-    body.style.alignItems='stretch';
-    body.style.gap='8px';
-
-    // Screen tiles
-    const screenTiles=activeScreens.map((s,i)=>`
+    body.style.cssText='flex-direction:column;align-items:stretch;gap:8px;';
+    const screenTiles=activeScreens.map(s=>`
       <div style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:12px;overflow:hidden;background:#000">
-        <video id="screenVid_${s.uid}" autoplay ${s.isMe?'muted':''} playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>
+        <video id="scrvid_${s.uid}" autoplay ${s.isMe?'muted':''} playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>
         <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''}</div>
       </div>`).join('');
-
-    // Participant strip
-    const strip=allUsers.map(u=>`<div class="cw-participant" style="width:110px;height:72px;flex-shrink:0;border:2px solid ${u.speaking?'var(--green)':'transparent'};border-radius:10px;overflow:hidden;background:#1e2029">
+    const strip=allUsers.map(u=>`<div style="width:110px;height:72px;flex-shrink:0;border:2px solid ${u.speaking?'var(--green)':'transparent'};border-radius:10px;overflow:hidden;background:#1e2029;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
         <div class="cw-av" style="background:${u.color};width:34px;height:34px;font-size:12px">${u.init}</div>
-        <div class="cw-name" style="font-size:10px">${esc(u.name)}${u.isMe?' (я)':''}</div>
+        <div class="cw-name" style="font-size:10px">${esc(u.name||'?')}${u.isMe?' (я)':''}</div>
       </div>`).join('');
-
-    body.innerHTML=`${screenTiles}<div style="display:flex;gap:8px;flex-shrink:0;justify-content:center;flex-wrap:wrap">${strip}</div>`;
-
-    // Attach streams to video elements
+    body.innerHTML=`${screenTiles}<div style="display:flex;gap:8px;flex-shrink:0;justify-content:center;flex-wrap:wrap;padding-bottom:4px">${strip}</div>`;
     activeScreens.forEach(s=>{
-      const vid=document.getElementById('screenVid_'+s.uid);
+      const vid=document.getElementById('scrvid_'+s.uid);
       if(vid&&vid.srcObject!==s.stream){vid.srcObject=s.stream;vid.play().catch(()=>{});}
     });
   } else {
-    body.style.flexDirection='';
-    body.style.alignItems='';
-    body.style.gap='';
-    body.innerHTML=allUsers.map((u)=>{
-      const sizeClass=count===1?'solo':count===2?'big':'small';
-      return `<div class="cw-participant ${sizeClass}${u.speaking?' spk':''}">
+    body.style.cssText='';
+    body.innerHTML=allUsers.map(u=>{
+      const sz=count===1?'solo':count===2?'big':'small';
+      return `<div class="cw-participant ${sz}${u.speaking?' spk':''}">
         <div class="cw-av" style="background:${u.color}">${u.init}</div>
-        <div class="cw-name">${u.isMe?'🎙':''} ${esc(u.name)}${u.isMe?' (я)':''}${u.speaking?'<span style="color:#23a55a">●</span>':''}</div>
+        <div class="cw-name">${u.isMe?'🎙':''} ${esc(u.name||'?')}${u.isMe?' (я)':''}${u.speaking?'<span style="color:#23a55a">●</span>':''}</div>
       </div>`;
     }).join('');
   }
 
-
+  side.innerHTML='<div class="cw-side-title">Участники ('+allUsers.length+')</div>'+
+    allUsers.map(u=>`<div class="cw-side-user">
+      <div class="cw-side-av" style="background:${u.color}">${u.init}</div>
+      <div class="cw-side-name">${esc(u.name||'?')}${u.isMe?' (я)':''}</div>
+      <div class="cw-side-spk${u.speaking?' on':''}"></div>
+    </div>`).join('');
+}
 window.leaveVoice=function(){
   if(!inVoice)return;
   inVoice=false;
@@ -1513,12 +1465,15 @@ window.setVolume=function(val){
   document.getElementById('cpVolume').value=val;
 };
 window.toggleScreen=function(){
-  // Open call window and trigger screen share
-  const cw=document.getElementById('callWindow');
-  if(cw && !cw.classList.contains('vis')){
-    cw.classList.add('vis');
+  const btn=document.getElementById('cpScreen');
+  if(!btn) return;
+  if(btn.classList.contains('active')){
+    btn.classList.remove('active');
+    toast('Демонстрация','🖥','Остановлена','info');
+  } else {
+    btn.classList.add('active');
+    toast('Демонстрация','🖥','Скоро будет доступна!','info');
   }
-  toggleScreenShare();
 };
 
 // ══════════════════════════════════════
