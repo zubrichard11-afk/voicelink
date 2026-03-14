@@ -1101,9 +1101,9 @@ window.joinVoice=function(room, peerId){
     if(!ok) toast('Голосовой','🔊','В канале (без микрофона)','info');
   });
   // Open call window
-  const isDM=room.startsWith('dm:');
-  const peerName=peerId?getUser(peerId).name:'';
-  openCallWindow(isDM?('📞 '+peerName):('🔊 '+room), isDM?'Голосовой звонок':'Голосовой канал');
+  const isDM2=room.startsWith('dm:');
+  const peerName2=peerId?getUser(peerId).name:'';
+  openCallWindow(isDM2?('📞 '+peerName2):('🔊 '+room), isDM2?'Голосовой звонок':'Голосовой канал');
 };
 
 function updateCallPanel(){
