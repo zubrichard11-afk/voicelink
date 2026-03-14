@@ -762,15 +762,24 @@ function getRemoteCtx(){
 function handleAudioChunk(buf){
   if(deafMuted) return;
   const bytes=new Uint8Array(buf);
+  // Find newline separator between header and PCM data
   let nl=-1;
-  for(let i=0;i<bytes.length;i++){if(bytes[i]===10){nl=i;break;}}
+  for(let i=0;i<Math.min(bytes.length,512);i++){if(bytes[i]===10){nl=i;break;}}
   if(nl<0) return;
-  // Parse header to get sender uid
+  // Parse header
+  let fromUid=null;
   try{
-    const header=JSON.parse(new TextDecoder().decode(bytes.slice(0,nl)));
-    if(header.from===myUid) return; // don't play own audio back
-  }catch{}
+    const headerStr=new TextDecoder().decode(bytes.slice(0,nl));
+    const header=JSON.parse(headerStr);
+    fromUid=header.from;
+  }catch(e){
+    return; // invalid header, skip
+  }
+  // Never play own audio back
+  if(fromUid===myUid) return;
+  // Play audio
   const pcmBuf=buf.slice(nl+1);
+  if(pcmBuf.byteLength<2) return;
   const i16=new Int16Array(pcmBuf);
   const f32=new Float32Array(i16.length);
   const gain=window._volumeGain||1;
