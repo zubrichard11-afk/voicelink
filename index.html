@@ -789,7 +789,7 @@ function handleWS(d){
       toast('Демонстрация','🖥',(getUser(d.uid).name||d.uid)+' остановил демонстрацию','info');
       rtcClosePeer(d.uid);
       rtcScreenVideos.delete(d.uid);
-      if(screenFrameUrls&&screenFrameUrls.has(d.uid)){URL.revokeObjectURL(screenFrameUrls.get(d.uid));screenFrameUrls.delete(d.uid);}
+      screenCanvases.delete(d.uid);
       if(inVoice)updateCallWindow();
       break;
   }
@@ -820,17 +820,21 @@ async function startMicRelay(){
   const src=audioCtx.createMediaStreamSource(micStream);
   micProcessor=audioCtx.createScriptProcessor(CHUNK_SAMPLES,1,1);
   micProcessor.onaudioprocess=e=>{
-    if(micMuted||!inVoice) return;
+    if(!inVoice) return;
+    if(micMuted){
+      // Ensure speaking=false stays synced
+      return;
+    }
     const f32=e.inputBuffer.getChannelData(0);
     // VAD
     const vol=f32.reduce((a,b)=>a+Math.abs(b),0)/f32.length;
     const spk=vol>0.008;
-    // Convert to Int16 and send
+    // Convert to Int16 and send audio
     const i16=new Int16Array(f32.length);
     for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
     wsSendBinary(i16.buffer);
-    // Speaking indicator
-    const prevSpk=vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking;
+    // Speaking indicator — only send on change
+    const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking);
     if(spk!==prevSpk){
       wsSend({type:'speaking',speaking:spk});
       if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
@@ -1292,7 +1296,7 @@ window.toggleScreenShare=async function(){
 
 function stopScreenShare(){
   screenSharing=false;
-  if(screenRelayTimer){clearInterval(screenRelayTimer);screenRelayTimer=null;}
+  if(screenRelayTimer){cancelAnimationFrame(screenRelayTimer);screenRelayTimer=null;}
   if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
   document.getElementById('cwScreenBtn')?.classList.remove('on');
   document.getElementById('cpScreen')?.classList.remove('active');
@@ -1303,34 +1307,45 @@ function stopScreenShare(){
 
 // ── Canvas-JPEG screen relay (no WebRTC/TURN needed) ──
 function startScreenRelay(){
-  if(screenRelayTimer) clearInterval(screenRelayTimer);
+  if(screenRelayTimer) cancelAnimationFrame(screenRelayTimer);
   const canvas=document.createElement('canvas');
-  const ctx2d=canvas.getContext('2d');
+  const ctx2d=canvas.getContext('2d',{alpha:false});
   const video=document.createElement('video');
   video.srcObject=screenStream;
   video.muted=true;
   video.play();
+
+  let lastSend=0;
+  const INTERVAL=1000/SCREEN_FPS;
+  let sending=false;
+  const hdrBytes=new TextEncoder().encode(JSON.stringify({type:'screen_frame',from:myUid,name:ME.name})+'\n');
+
+  function tick(ts){
+    if(!screenSharing){return;}
+    screenRelayTimer=requestAnimationFrame(tick);
+    if(ts-lastSend<INTERVAL||sending||!ws||ws.readyState!==1||video.readyState<2) return;
+    lastSend=ts;
+    sending=true;
+    ctx2d.drawImage(video,0,0,canvas.width,canvas.height);
+    canvas.toBlob(blob=>{
+      sending=false;
+      if(!blob||!screenSharing) return;
+      blob.arrayBuffer().then(buf=>{
+        if(!screenSharing||!ws||ws.readyState!==1) return;
+        const combined=new Uint8Array(hdrBytes.length+buf.byteLength);
+        combined.set(hdrBytes,0);
+        combined.set(new Uint8Array(buf),hdrBytes.length);
+        ws.send(combined.buffer);
+      });
+    },'image/jpeg',SCREEN_QUALITY);
+  }
+
   video.addEventListener('loadedmetadata',()=>{
-    const vw=video.videoWidth, vh=video.videoHeight;
+    const vw=video.videoWidth||1280, vh=video.videoHeight||720;
     const scale=Math.min(1, SCREEN_MAX_W/vw);
     canvas.width=Math.round(vw*scale);
     canvas.height=Math.round(vh*scale);
-    screenRelayTimer=setInterval(()=>{
-      if(!screenSharing||!screenStream||!ws||ws.readyState!==1) return;
-      ctx2d.drawImage(video,0,0,canvas.width,canvas.height);
-      canvas.toBlob(blob=>{
-        if(!blob) return;
-        blob.arrayBuffer().then(buf=>{
-          // Prefix with text header + newline, then JPEG bytes
-          const hdr=JSON.stringify({type:'screen_frame',from:myUid,name:ME.name})+'\n';
-          const hdrBuf=new TextEncoder().encode(hdr);
-          const combined=new Uint8Array(hdrBuf.length+buf.byteLength);
-          combined.set(hdrBuf,0);
-          combined.set(new Uint8Array(buf),hdrBuf.length);
-          if(ws&&ws.readyState===1) ws.send(combined.buffer);
-        });
-      },'image/jpeg',SCREEN_QUALITY);
-    },Math.round(1000/SCREEN_FPS));
+    screenRelayTimer=requestAnimationFrame(tick);
   });
 }
 
@@ -1370,7 +1385,7 @@ function updateCallWindow(){
   if(screenSharing&&screenStream) activeScreens.push({uid:myUid,name:ME.name,isMe:true,stream:screenStream});
   rtcScreenVideos.forEach((urlOrStream,uid)=>{
     const u=roomUsers[uid]||{};
-    activeScreens.push({uid,name:u.name||uid,isMe:false,frameUrl:urlOrStream});
+    activeScreens.push({uid,name:u.name||uid,isMe:false});
   });
 
   if(activeScreens.length>0){
@@ -1379,7 +1394,7 @@ function updateCallWindow(){
       <div style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:12px;overflow:hidden;background:#000">
         ${s.isMe
           ? `<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
-          : `<img id="scrframe_${s.uid}" src="${s.frameUrl||''}" style="width:100%;height:100%;object-fit:contain;display:block" alt="">`
+          : `<canvas id="scrcanvas_${s.uid}" style="width:100%;height:100%;object-fit:contain;display:block;background:#000"></canvas>`
         }
         <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''}</div>
       </div>`).join('');
@@ -1430,7 +1445,12 @@ function renderVCUsers(){
     if(!el)return;
     const users=vcRooms[room]||{};
     if(cnt)cnt.textContent=Object.keys(users).length+'/32';
-    el.innerHTML=Object.entries(users).map(([uid,u])=>`<div class="vc-user${u.speaking?' spk':''}"><span class="vc-dot"></span>${esc(u.name)}</div>`).join('');
+    el.innerHTML=Object.entries(users).map(([uid,u])=>{
+      const isMutedMic=uid===myUid&&micMuted;
+      const isMutedDeaf=uid===myUid&&deafMuted;
+      const icons=(isMutedMic?'🔇':'')+(isMutedDeaf?'🔕':'');
+      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}"><span class="vc-dot"></span>${esc(u.name)}${icons?` <span style="font-size:10px;opacity:.7">${icons}</span>`:''}`;
+    }).join('');
   });
 }
 function updateVCBar(){
@@ -1485,12 +1505,24 @@ window.toggleMic=function(){
   const cp=document.getElementById('cpMic');if(cp){cp.textContent=icon;cp.classList.toggle('muted',micMuted);}
   const cwMic=document.getElementById('cwMicBtn');if(cwMic){cwMic.textContent=icon;cwMic.classList.toggle('off',micMuted);}
   toast(micMuted?'Замьючен':'Размьючен',icon,'','info');
+  // Reset speaking state when muting so animation stops
+  if(micMuted){
+    wsSend({type:'speaking',speaking:false});
+    if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
+      vcRooms[currentVoiceRoom][myUid].speaking=false;
+    renderVCUsers();updateVCBar();
+    if(inVoice)updateCallWindow();
+  }
 };
 window.toggleDeaf=function(){
   deafMuted=!deafMuted;
-  ['deafBtn','vbSnd'].forEach(id=>{const b=document.getElementById(id);if(b)b.classList.toggle('danger',deafMuted);});
-  const cp=document.getElementById('cpDeaf');if(cp)cp.classList.toggle('muted',deafMuted);
-  const cwDeaf=document.getElementById('cwDeafBtn');if(cwDeaf)cwDeaf.classList.toggle('off',deafMuted);
+  const icon=deafMuted?'🔕':'🎧';
+  ['deafBtn','vbSnd'].forEach(id=>{const b=document.getElementById(id);if(b){b.classList.toggle('danger',deafMuted);}});
+  const cp=document.getElementById('cpDeaf');if(cp){cp.textContent=icon;cp.classList.toggle('muted',deafMuted);}
+  const cwDeaf=document.getElementById('cwDeafBtn');if(cwDeaf){cwDeaf.classList.toggle('off',deafMuted);}
+  toast(deafMuted?'Наушники выключены':'Наушники включены',icon,'','info');
+  // Deafening also mutes mic
+  if(deafMuted&&!micMuted) toggleMic();
 };
 window.setVolume=function(val){
   const gain=val/100;
