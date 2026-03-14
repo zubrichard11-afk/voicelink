@@ -907,28 +907,34 @@ function handleAudioChunk(buf){
 // ── Incoming screen frames ──
 const screenFrameUrls=new Map(); // uid -> object URL
 function handleScreenFrame(hdr,jpegBuf){
-  if(deafMuted) return; // respect mute = no screen either
   const uid=hdr.from;
   if(uid===myUid) return;
-  // Revoke old URL
-  if(screenFrameUrls.has(uid)) URL.revokeObjectURL(screenFrameUrls.get(uid));
-  const blob=new Blob([jpegBuf],{type:'image/jpeg'});
-  const url=URL.createObjectURL(blob);
-  screenFrameUrls.set(uid,url);
-  // Update img element if visible
-  const img=document.getElementById('scrframe_'+uid);
-  if(img) img.src=url;
-  else{
-    // First frame from this user — they started sharing, update UI
-    if(!rtcScreenVideos.has(uid)){
-      rtcScreenVideos.set(uid,url); // store url as marker
-      if(inVoice) updateCallWindow();
-    } else {
-      rtcScreenVideos.set(uid,url);
-      const img2=document.getElementById('scrframe_'+uid);
-      if(img2) img2.src=url;
-    }
+
+  const isFirst=!rtcScreenVideos.has(uid);
+  rtcScreenVideos.set(uid,'active');
+
+  // First frame: build UI then draw
+  if(isFirst && inVoice){
+    updateCallWindow();
+    // Canvas is now in DOM — draw on next microtask
+    createImageBitmap(new Blob([jpegBuf],{type:'image/jpeg'})).then(bmp=>{
+      const cv=document.getElementById('scrcanvas_'+uid);
+      if(!cv){bmp.close();return;}
+      cv.width=bmp.width; cv.height=bmp.height;
+      cv.getContext('2d').drawImage(bmp,0,0);
+      bmp.close();
+    }).catch(()=>{});
+    return;
   }
+
+  // Subsequent frames: draw directly into canvas
+  const cv=document.getElementById('scrcanvas_'+uid);
+  if(!cv) return;
+  createImageBitmap(new Blob([jpegBuf],{type:'image/jpeg'})).then(bmp=>{
+    if(cv.width!==bmp.width||cv.height!==bmp.height){cv.width=bmp.width;cv.height=bmp.height;}
+    cv.getContext('2d').drawImage(bmp,0,0);
+    bmp.close();
+  }).catch(()=>{});
 }
 
 // ══════════════════════════════════════
@@ -1380,49 +1386,72 @@ function updateCallWindow(){
     ...Object.entries(roomUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
   const count=allUsers.length;
 
-  // Collect active screens: own (video) + peers (jpeg frames)
+  // Collect active screens
   const activeScreens=[];
-  if(screenSharing&&screenStream) activeScreens.push({uid:myUid,name:ME.name,isMe:true,stream:screenStream});
-  rtcScreenVideos.forEach((urlOrStream,uid)=>{
+  if(screenSharing&&screenStream) activeScreens.push({uid:myUid,name:ME.name,isMe:true});
+  rtcScreenVideos.forEach((_,uid)=>{
     const u=roomUsers[uid]||{};
     activeScreens.push({uid,name:u.name||uid,isMe:false});
   });
 
   if(activeScreens.length>0){
     body.style.cssText='flex-direction:column;align-items:stretch;gap:8px;';
-    const screenTiles=activeScreens.map(s=>`
-      <div style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:12px;overflow:hidden;background:#000">
-        ${s.isMe
-          ? `<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
-          : `<canvas id="scrcanvas_${s.uid}" style="width:100%;height:100%;object-fit:contain;display:block;background:#000"></canvas>`
-        }
-        <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''}</div>
-      </div>`).join('');
-    const strip=allUsers.map(u=>`<div style="width:110px;height:72px;flex-shrink:0;border:2px solid ${u.speaking?'var(--green)':'transparent'};border-radius:10px;overflow:hidden;background:#1e2029;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
-        <div class="cw-av" style="background:${u.color};width:34px;height:34px;font-size:12px">${u.init}</div>
-        <div class="cw-name" style="font-size:10px">${esc(u.name||'?')}${u.isMe?' (я)':''}</div>
-      </div>`).join('');
-    body.innerHTML=`${screenTiles}<div style="display:flex;gap:8px;flex-shrink:0;justify-content:center;flex-wrap:wrap;padding-bottom:4px">${strip}</div>`;
-    // Attach own screen stream to video
-    const ownVid=document.getElementById('scrvid_'+myUid);
-    if(ownVid&&screenStream&&ownVid.srcObject!==screenStream){ownVid.srcObject=screenStream;ownVid.play().catch(()=>{});}
+
+    // ── Smart DOM update: only rebuild if screen set changed ──
+    const newIds=activeScreens.map(s=>s.uid).sort().join(',');
+    const oldIds=(body.dataset.screenIds||'');
+    if(newIds!==oldIds){
+      body.dataset.screenIds=newIds;
+      const screenTiles=activeScreens.map(s=>`
+        <div style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:12px;overflow:hidden;background:#000">
+          ${s.isMe
+            ? `<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
+            : `<canvas id="scrcanvas_${s.uid}" style="width:100%;height:100%;object-fit:contain;display:block;background:#000"></canvas>`
+          }
+          <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''}</div>
+        </div>`).join('');
+      const strip=`<div id="cwStrip" style="display:flex;gap:8px;flex-shrink:0;justify-content:center;flex-wrap:wrap;padding-bottom:4px"></div>`;
+      body.innerHTML=screenTiles+strip;
+      // Attach own screen video
+      const ownVid=document.getElementById('scrvid_'+myUid);
+      if(ownVid&&screenStream){ownVid.srcObject=screenStream;ownVid.play().catch(()=>{});}
+    }
+
+    // ── Always update participant strip (speaking state) ──
+    const strip=document.getElementById('cwStrip');
+    if(strip){
+      strip.innerHTML=allUsers.map(u=>{
+        const isMic=u.isMe&&micMuted;
+        return `<div style="width:110px;height:72px;flex-shrink:0;border:2px solid ${u.speaking&&!isMic?'var(--green)':'transparent'};border-radius:10px;overflow:hidden;background:#1e2029;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+          <div class="cw-av" style="background:${u.color};width:34px;height:34px;font-size:12px">${u.init}</div>
+          <div class="cw-name" style="font-size:10px">${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?'🔇':''}</div>
+        </div>`;
+      }).join('');
+    }
+
   } else {
     body.style.cssText='';
+    body.dataset.screenIds='';
     body.innerHTML=allUsers.map(u=>{
       const sz=count===1?'solo':count===2?'big':'small';
-      return `<div class="cw-participant ${sz}${u.speaking?' spk':''}">
+      const isMic=u.isMe&&micMuted;
+      return `<div class="cw-participant ${sz}${u.speaking&&!isMic?' spk':''}">
         <div class="cw-av" style="background:${u.color}">${u.init}</div>
-        <div class="cw-name">${u.isMe?'🎙':''} ${esc(u.name||'?')}${u.isMe?' (я)':''}${u.speaking?'<span style="color:#23a55a">●</span>':''}</div>
+        <div class="cw-name">${u.isMe?'🎙':''} ${esc(u.name||'?')}${u.isMe?' (я)':''}${u.speaking&&!isMic?'<span style="color:#23a55a">●</span>':''}</div>
       </div>`;
     }).join('');
   }
 
+  // Side panel — lightweight update
   side.innerHTML='<div class="cw-side-title">Участники ('+allUsers.length+')</div>'+
-    allUsers.map(u=>`<div class="cw-side-user">
-      <div class="cw-side-av" style="background:${u.color}">${u.init}</div>
-      <div class="cw-side-name">${esc(u.name||'?')}${u.isMe?' (я)':''}</div>
-      <div class="cw-side-spk${u.speaking?' on':''}"></div>
-    </div>`).join('');
+    allUsers.map(u=>{
+      const isMic=u.isMe&&micMuted;
+      return `<div class="cw-side-user">
+        <div class="cw-side-av" style="background:${u.color}">${u.init}</div>
+        <div class="cw-side-name">${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?' 🔇':''}</div>
+        <div class="cw-side-spk${u.speaking&&!isMic?' on':''}"></div>
+      </div>`;
+    }).join('');
 }
 window.leaveVoice=function(){
   if(!inVoice)return;
@@ -1449,14 +1478,19 @@ function renderVCUsers(){
       const isMutedMic=uid===myUid&&micMuted;
       const isMutedDeaf=uid===myUid&&deafMuted;
       const icons=(isMutedMic?'🔇':'')+(isMutedDeaf?'🔕':'');
-      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}"><span class="vc-dot"></span>${esc(u.name)}${icons?` <span style="font-size:10px;opacity:.7">${icons}</span>`:''}`;
+      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}"><span class="vc-dot"></span>${esc(u.name)}${icons?`<span style="font-size:10px;opacity:.6;margin-left:3px">${icons}</span>`:''}</div>`;
     }).join('');
   });
 }
 function updateVCBar(){
   const el=document.getElementById('vbarUsers');if(!el||!inVoice)return;
   const users=vcRooms[currentVoiceRoom]||{};
-  el.innerHTML=Object.entries(users).map(([uid,u])=>`<div class="vbu${u.speaking?' spk':''}"><span class="vbu-dot"></span>${esc(u.name)}</div>`).join('');
+  el.innerHTML=Object.entries(users).map(([uid,u])=>{
+    const isMic=uid===myUid&&micMuted;
+    const isDef=uid===myUid&&deafMuted;
+    const icons=(isMic?'🔇':'')+(isDef?'🔕':'');
+    return `<div class="vbu${u.speaking&&!isMic?' spk':''}"><span class="vbu-dot"></span>${esc(u.name)}${icons?`<span style="font-size:10px;margin-left:2px">${icons}</span>`:''}</div>`;
+  }).join('');
 }
 
 // ══════════════════════════════════════
