@@ -623,7 +623,7 @@ const rtcScreenVideos=new Map();
 // Screen share relay via WebSocket (canvas JPEG frames)
 // No WebRTC/TURN needed — works everywhere including Railway
 let screenRelayTimer=null;
-const SCREEN_FPS=30;
+const SCREEN_FPS=60;
 const SCREEN_QUALITY=0.8;
 const SCREEN_MAX_W=1920;
 let cwMinimized=false;
@@ -1310,7 +1310,7 @@ window.toggleScreenShare=async function(){
 
 function stopScreenShare(){
   screenSharing=false;
-  if(screenRelayTimer){cancelAnimationFrame(screenRelayTimer);screenRelayTimer=null;}
+  stopScreenRelayInternal();
   if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
   document.getElementById('cwScreenBtn')?.classList.remove('on');
   document.getElementById('cpScreen')?.classList.remove('active');
@@ -1321,9 +1321,8 @@ function stopScreenShare(){
 
 // ── Canvas-JPEG screen relay (no WebRTC/TURN needed) ──
 function startScreenRelay(){
-  if(screenRelayTimer) cancelAnimationFrame(screenRelayTimer);
+  if(screenRelayTimer) stopScreenRelayInternal();
 
-  // Use OffscreenCanvas if available for better performance
   const video=document.createElement('video');
   video.srcObject=screenStream;
   video.muted=true;
@@ -1335,8 +1334,8 @@ function startScreenRelay(){
   );
 
   let canvas=null, ctx2d=null;
-  let frameNum=0;
   let pending=false;
+  let worker=null;
 
   async function sendFrame(){
     if(pending||!screenSharing||!ws||ws.readyState!==1||!canvas) return;
@@ -1344,8 +1343,7 @@ function startScreenRelay(){
     pending=true;
     try{
       ctx2d.drawImage(video,0,0,canvas.width,canvas.height);
-      // convertToBlob on OffscreenCanvas, toBlob on regular — both return Promise<Blob>
-      const blob = canvas.convertToBlob
+      const blob=canvas.convertToBlob
         ? await canvas.convertToBlob({type:'image/jpeg',quality:SCREEN_QUALITY})
         : await new Promise(res=>canvas.toBlob(res,'image/jpeg',SCREEN_QUALITY));
       if(!blob||!screenSharing||!ws||ws.readyState!==1){pending=false;return;}
@@ -1358,35 +1356,60 @@ function startScreenRelay(){
     pending=false;
   }
 
-  function tick(){
-    if(!screenSharing){return;}
-    screenRelayTimer=requestAnimationFrame(tick);
-    frameNum++;
-    // Only process every Nth frame based on target FPS vs rAF 60fps
-    const every=Math.max(1,Math.round(60/SCREEN_FPS));
-    if(frameNum%every!==0) return;
-    sendFrame(); // async, pending flag prevents overlap
+  function startWorkerTimer(interval){
+    // Inline worker — setInterval inside Worker is NOT throttled when tab loses focus
+    const workerCode=`
+      let t=null;
+      self.onmessage=function(e){
+        if(e.data==='start'){
+          if(t) clearInterval(t);
+          t=setInterval(()=>self.postMessage('tick'), ${Math.round(1000/SCREEN_FPS)});
+        } else if(e.data==='stop'){
+          clearInterval(t); t=null;
+        }
+      };
+    `;
+    const blob=new Blob([workerCode],{type:'text/javascript'});
+    worker=new Worker(URL.createObjectURL(blob));
+    worker.onmessage=()=>sendFrame();
+    worker.postMessage('start');
   }
 
   video.addEventListener('loadedmetadata',()=>{
     const vw=video.videoWidth||1920, vh=video.videoHeight||1080;
     const scale=Math.min(1, SCREEN_MAX_W/vw);
     const w=Math.round(vw*scale), h=Math.round(vh*scale);
-    // Try OffscreenCanvas first (faster, no main thread paint)
     try{
       canvas=new OffscreenCanvas(w,h);
-      ctx2d=canvas.getContext('2d',{alpha:false});
+      ctx2d=canvas.getContext('2d',{alpha:false,desynchronized:true});
     }catch(e){
       canvas=document.createElement('canvas');
       canvas.width=w; canvas.height=h;
       ctx2d=canvas.getContext('2d',{alpha:false});
     }
-    frameNum=0;
-    screenRelayTimer=requestAnimationFrame(tick);
+    startWorkerTimer();
+    // Store worker ref for cleanup
+    screenRelayTimer=worker;
   });
 
-  // If metadata already loaded (e.g. stream already active)
   if(video.readyState>=1) video.dispatchEvent(new Event('loadedmetadata'));
+
+  // Also store video ref for cleanup
+  window._screenRelayVideo=video;
+}
+
+function stopScreenRelayInternal(){
+  if(screenRelayTimer&&screenRelayTimer.postMessage){
+    screenRelayTimer.postMessage('stop');
+    screenRelayTimer.terminate();
+  } else if(screenRelayTimer){
+    cancelAnimationFrame(screenRelayTimer);
+  }
+  screenRelayTimer=null;
+  if(window._screenRelayVideo){
+    window._screenRelayVideo.srcObject=null;
+    window._screenRelayVideo=null;
+  }
 }
 
 // Stubs for unused rtc handlers (keep WS switch cases working)
