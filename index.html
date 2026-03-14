@@ -620,17 +620,12 @@ let screenSharing=false;
 let screenStream=null;
 const rtcPeers=new Map();
 const rtcScreenVideos=new Map();
-const RTC_CONFIG={
-  iceServers:[
-    {urls:'stun:stun.l.google.com:19302'},
-    {urls:'stun:stun1.l.google.com:19302'},
-    {urls:'stun:stun.relay.metered.ca:80'},
-    {urls:'turn:global.relay.metered.ca:80',  username:'openrelayproject',credential:'openrelayproject'},
-    {urls:'turn:global.relay.metered.ca:80?transport=tcp',username:'openrelayproject',credential:'openrelayproject'},
-    {urls:'turn:global.relay.metered.ca:443', username:'openrelayproject',credential:'openrelayproject'},
-    {urls:'turns:global.relay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'},
-  ]
-};
+// Screen share relay via WebSocket (canvas JPEG frames)
+// No WebRTC/TURN needed — works everywhere including Railway
+let screenRelayTimer=null;
+const SCREEN_FPS=10;
+const SCREEN_QUALITY=0.5;
+const SCREEN_MAX_W=1280;
 let cwMinimized=false;
 let inVoice=false,currentVoiceRoom='';
 let ppTarget=null;
@@ -690,6 +685,16 @@ function connectWS(){
 
   ws.onmessage=e=>{
     if(e.data instanceof ArrayBuffer){
+      // Peek at header to determine type
+      const bytes=new Uint8Array(e.data);
+      let nl=-1;
+      for(let i=0;i<Math.min(bytes.length,256);i++){if(bytes[i]===10){nl=i;break;}}
+      if(nl>0){
+        try{
+          const hdr=JSON.parse(new TextDecoder().decode(bytes.slice(0,nl)));
+          if(hdr.type==='screen_frame'){ handleScreenFrame(hdr,e.data.slice(nl+1)); return; }
+        }catch(e){}
+      }
       handleAudioChunk(e.data);
       return;
     }
@@ -784,6 +789,7 @@ function handleWS(d){
       toast('Демонстрация','🖥',(getUser(d.uid).name||d.uid)+' остановил демонстрацию','info');
       rtcClosePeer(d.uid);
       rtcScreenVideos.delete(d.uid);
+      if(screenFrameUrls&&screenFrameUrls.has(d.uid)){URL.revokeObjectURL(screenFrameUrls.get(d.uid));screenFrameUrls.delete(d.uid);}
       if(inVoice)updateCallWindow();
       break;
   }
@@ -892,6 +898,33 @@ function handleAudioChunk(buf){
   src.buffer=abuf;
   src.connect(ctx.destination);
   src.start();
+}
+
+// ── Incoming screen frames ──
+const screenFrameUrls=new Map(); // uid -> object URL
+function handleScreenFrame(hdr,jpegBuf){
+  if(deafMuted) return; // respect mute = no screen either
+  const uid=hdr.from;
+  if(uid===myUid) return;
+  // Revoke old URL
+  if(screenFrameUrls.has(uid)) URL.revokeObjectURL(screenFrameUrls.get(uid));
+  const blob=new Blob([jpegBuf],{type:'image/jpeg'});
+  const url=URL.createObjectURL(blob);
+  screenFrameUrls.set(uid,url);
+  // Update img element if visible
+  const img=document.getElementById('scrframe_'+uid);
+  if(img) img.src=url;
+  else{
+    // First frame from this user — they started sharing, update UI
+    if(!rtcScreenVideos.has(uid)){
+      rtcScreenVideos.set(uid,url); // store url as marker
+      if(inVoice) updateCallWindow();
+    } else {
+      rtcScreenVideos.set(uid,url);
+      const img2=document.getElementById('scrframe_'+uid);
+      if(img2) img2.src=url;
+    }
+  }
 }
 
 // ══════════════════════════════════════
@@ -1240,7 +1273,10 @@ window.setVolume=function(val){
 window.toggleScreenShare=async function(){
   if(screenSharing){ stopScreenShare(); return; }
   try{
-    screenStream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:false});
+    screenStream=await navigator.mediaDevices.getDisplayMedia({
+      video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:SCREEN_FPS}},
+      audio:false
+    });
     screenSharing=true;
     document.getElementById('cwScreenBtn')?.classList.add('on');
     document.getElementById('cpScreen')?.classList.add('active');
@@ -1248,7 +1284,7 @@ window.toggleScreenShare=async function(){
     toast('Демонстрация','🖥','Демонстрация экрана начата','success');
     screenStream.getVideoTracks()[0].onended=()=>stopScreenShare();
     wsSend({type:'screen_start'});
-    rtcBroadcastScreen();
+    startScreenRelay();
   }catch(e){
     if(e.name!=='NotAllowedError') toast('Демонстрация','🖥','Ошибка: '+e.message,'error');
   }
@@ -1256,79 +1292,54 @@ window.toggleScreenShare=async function(){
 
 function stopScreenShare(){
   screenSharing=false;
+  if(screenRelayTimer){clearInterval(screenRelayTimer);screenRelayTimer=null;}
   if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
   document.getElementById('cwScreenBtn')?.classList.remove('on');
   document.getElementById('cpScreen')?.classList.remove('active');
-  rtcPeers.forEach(pc=>pc.close()); rtcPeers.clear();
   wsSend({type:'screen_stop'});
   updateCallWindow();
   toast('Демонстрация','🖥','Остановлена','info');
 }
 
-// ── WebRTC helpers ──
-function rtcCreatePeer(uid){
-  if(rtcPeers.has(uid)) rtcPeers.get(uid).close();
-  const pc=new RTCPeerConnection(RTC_CONFIG);
-  rtcPeers.set(uid,pc);
-  pc.onicecandidate=e=>{if(e.candidate) wsSend({type:'rtc_ice',to:uid,candidate:e.candidate});};
-  pc.ontrack=e=>{
-    if(e.streams&&e.streams[0]){
-      rtcScreenVideos.set(uid,e.streams[0]);
-      if(inVoice)updateCallWindow();
-    }
-  };
-  pc.onconnectionstatechange=()=>{
-    if(pc.connectionState==='failed'||pc.connectionState==='closed') rtcPeers.delete(uid);
-  };
-  return pc;
+// ── Canvas-JPEG screen relay (no WebRTC/TURN needed) ──
+function startScreenRelay(){
+  if(screenRelayTimer) clearInterval(screenRelayTimer);
+  const canvas=document.createElement('canvas');
+  const ctx2d=canvas.getContext('2d');
+  const video=document.createElement('video');
+  video.srcObject=screenStream;
+  video.muted=true;
+  video.play();
+  video.addEventListener('loadedmetadata',()=>{
+    const vw=video.videoWidth, vh=video.videoHeight;
+    const scale=Math.min(1, SCREEN_MAX_W/vw);
+    canvas.width=Math.round(vw*scale);
+    canvas.height=Math.round(vh*scale);
+    screenRelayTimer=setInterval(()=>{
+      if(!screenSharing||!screenStream||!ws||ws.readyState!==1) return;
+      ctx2d.drawImage(video,0,0,canvas.width,canvas.height);
+      canvas.toBlob(blob=>{
+        if(!blob) return;
+        blob.arrayBuffer().then(buf=>{
+          // Prefix with text header + newline, then JPEG bytes
+          const hdr=JSON.stringify({type:'screen_frame',from:myUid,name:ME.name})+'\n';
+          const hdrBuf=new TextEncoder().encode(hdr);
+          const combined=new Uint8Array(hdrBuf.length+buf.byteLength);
+          combined.set(hdrBuf,0);
+          combined.set(new Uint8Array(buf),hdrBuf.length);
+          if(ws&&ws.readyState===1) ws.send(combined.buffer);
+        });
+      },'image/jpeg',SCREEN_QUALITY);
+    },Math.round(1000/SCREEN_FPS));
+  });
 }
-function rtcClosePeer(uid){
-  if(rtcPeers.has(uid)){rtcPeers.get(uid).close();rtcPeers.delete(uid);}
-}
-async function rtcBroadcastScreen(){
-  if(!screenStream||!inVoice) return;
-  for(const uid of Object.keys(vcRooms[currentVoiceRoom]||{})){
-    try{
-      const pc=rtcCreatePeer(uid);
-      screenStream.getTracks().forEach(t=>pc.addTrack(t,screenStream));
-      const offer=await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      wsSend({type:'rtc_offer',to:uid,sdp:pc.localDescription,kind:'screen'});
-    }catch(e){console.warn('rtcBroadcastScreen',uid,e);}
-  }
-}
-async function rtcSendScreenTo(uid){
-  if(!screenStream) return;
-  try{
-    const pc=rtcCreatePeer(uid);
-    screenStream.getTracks().forEach(t=>pc.addTrack(t,screenStream));
-    const offer=await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    wsSend({type:'rtc_offer',to:uid,sdp:pc.localDescription,kind:'screen'});
-  }catch(e){console.warn('rtcSendScreenTo',e);}
-}
-function rtcRequestScreen(uid){
-  wsSend({type:'rtc_offer',to:uid,sdp:null,kind:'request'});
-}
-async function rtcHandleOffer(fromUid,sdp,kind){
-  if(kind==='request'){ if(screenSharing&&screenStream) rtcSendScreenTo(fromUid); return; }
-  if(!sdp) return;
-  try{
-    const pc=rtcCreatePeer(fromUid);
-    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    const answer=await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    wsSend({type:'rtc_answer',to:fromUid,sdp:pc.localDescription,kind});
-  }catch(e){console.warn('rtcHandleOffer',e);}
-}
-async function rtcHandleAnswer(fromUid,sdp){
-  const pc=rtcPeers.get(fromUid); if(!pc||!sdp) return;
-  try{ await pc.setRemoteDescription(new RTCSessionDescription(sdp)); }catch(e){console.warn('rtcHandleAnswer',e);}
-}
-async function rtcHandleIce(fromUid,candidate){
-  const pc=rtcPeers.get(fromUid); if(!pc||!candidate) return;
-  try{ await pc.addIceCandidate(new RTCIceCandidate(candidate)); }catch(e){}
-}
+
+// Stubs for unused rtc handlers (keep WS switch cases working)
+function rtcClosePeer(uid){ rtcScreenVideos.delete(uid); }
+function rtcRequestScreen(uid){}
+function rtcHandleOffer(fromUid,sdp,kind){}
+function rtcHandleAnswer(fromUid,sdp){}
+function rtcHandleIce(fromUid,candidate){}
 
 window.toggleCWSize=function(){
   cwMinimized=!cwMinimized;
@@ -1354,18 +1365,22 @@ function updateCallWindow(){
     ...Object.entries(roomUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
   const count=allUsers.length;
 
-  // Collect active screen streams
+  // Collect active screens: own (video) + peers (jpeg frames)
   const activeScreens=[];
-  if(screenSharing&&screenStream) activeScreens.push({uid:myUid,name:ME.name,stream:screenStream,isMe:true});
-  rtcScreenVideos.forEach((stream,uid)=>{
-    if(stream&&stream.active){ const u=roomUsers[uid]||{}; activeScreens.push({uid,name:u.name||uid,stream,isMe:false}); }
+  if(screenSharing&&screenStream) activeScreens.push({uid:myUid,name:ME.name,isMe:true,stream:screenStream});
+  rtcScreenVideos.forEach((urlOrStream,uid)=>{
+    const u=roomUsers[uid]||{};
+    activeScreens.push({uid,name:u.name||uid,isMe:false,frameUrl:urlOrStream});
   });
 
   if(activeScreens.length>0){
     body.style.cssText='flex-direction:column;align-items:stretch;gap:8px;';
     const screenTiles=activeScreens.map(s=>`
       <div style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:12px;overflow:hidden;background:#000">
-        <video id="scrvid_${s.uid}" autoplay ${s.isMe?'muted':''} playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>
+        ${s.isMe
+          ? `<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
+          : `<img id="scrframe_${s.uid}" src="${s.frameUrl||''}" style="width:100%;height:100%;object-fit:contain;display:block" alt="">`
+        }
         <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''}</div>
       </div>`).join('');
     const strip=allUsers.map(u=>`<div style="width:110px;height:72px;flex-shrink:0;border:2px solid ${u.speaking?'var(--green)':'transparent'};border-radius:10px;overflow:hidden;background:#1e2029;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
@@ -1373,10 +1388,9 @@ function updateCallWindow(){
         <div class="cw-name" style="font-size:10px">${esc(u.name||'?')}${u.isMe?' (я)':''}</div>
       </div>`).join('');
     body.innerHTML=`${screenTiles}<div style="display:flex;gap:8px;flex-shrink:0;justify-content:center;flex-wrap:wrap;padding-bottom:4px">${strip}</div>`;
-    activeScreens.forEach(s=>{
-      const vid=document.getElementById('scrvid_'+s.uid);
-      if(vid&&vid.srcObject!==s.stream){vid.srcObject=s.stream;vid.play().catch(()=>{});}
-    });
+    // Attach own screen stream to video
+    const ownVid=document.getElementById('scrvid_'+myUid);
+    if(ownVid&&screenStream&&ownVid.srcObject!==screenStream){ownVid.srcObject=screenStream;ownVid.play().catch(()=>{});}
   } else {
     body.style.cssText='';
     body.innerHTML=allUsers.map(u=>{
@@ -1580,7 +1594,17 @@ function stripHtml(s){return s.replace(/<[^>]+>/g,'');}
 window.autoResize=function(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,160)+'px';};
 window.handleKey=function(e,ctx,id){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ctx==='dm'?sendDM(id):sendSrv(currentSrvCh);}};
 window.putInp=function(id,txt){const el=document.getElementById(id);if(el){el.value=txt;el.focus();autoResize(el);}};
-window.openModal=function(id){const el=document.getElementById(id);if(el)el.classList.add('vis');};
+window.openModal=function(id){
+  if(id==='inviteModal2'){
+    // remove existing if any
+    document.querySelectorAll('.invite-modal-bg').forEach(e=>e.remove());
+    const div=document.createElement('div');div.className='modal-bg vis invite-modal-bg';
+    div.innerHTML=`<div class="modal"><div class="modal-title">🔗 Пригласить</div><div style="background:var(--bg1);border:1px solid var(--border2);border-radius:6px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px"><span style="font-size:12px;word-break:break-all">${location.href}</span><button onclick="navigator.clipboard.writeText(location.href).then(()=>toast('Скопировано','📋','','success'));this.textContent='✓'" style="padding:5px 12px;border-radius:4px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:700;font-family:var(--font)">Копировать</button></div><div class="modal-btns"><button class="btn-cancel" onclick="this.closest('.modal-bg').remove()">Закрыть</button></div></div>`;
+    div.onclick=e=>{if(e.target===div)div.remove();};
+    document.body.appendChild(div);return;
+  }
+  const el=document.getElementById(id);if(el)el.classList.add('vis');
+};
 window.closeModal=function(id){const el=document.getElementById(id);if(el)el.classList.remove('vis');};
 document.addEventListener('click',e=>{document.querySelectorAll('.modal-bg.vis').forEach(b=>{if(e.target===b)b.classList.remove('vis');});});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.modal-bg.vis').forEach(b=>b.classList.remove('vis'));closePP();}if(e.key==='m'&&e.ctrlKey){e.preventDefault();toggleMic();}});
@@ -1594,16 +1618,8 @@ function setWsDot(c){const el=document.getElementById('wsDot');if(!el)return;el.
 function showStatus(msg,type){const el=document.getElementById('statusBar');if(!el)return;el.textContent=msg;el.className=`vis sb-${type==='connecting'?'connecting':type==='connected'?'connected':'error'}`;}
 function hideStatus(){const el=document.getElementById('statusBar');if(el)el.classList.remove('vis');}
 
-// invite modal inline
-window.openModal=function(id){
-  if(id==='inviteModal2'){
-    const div=document.createElement('div');div.className='modal-bg vis';
-    div.innerHTML=`<div class="modal"><div class="modal-title">🔗 Пригласить</div><div style="background:var(--bg1);border:1px solid var(--border2);border-radius:6px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px"><span style="font-size:12px;word-break:break-all">${location.href}</span><button onclick="navigator.clipboard.writeText('${location.href}').then(()=>toast('Скопировано','📋','','success'));this.textContent='✓'" style="padding:5px 12px;border-radius:4px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:700;font-family:var(--font)">Копировать</button></div><div class="modal-btns"><button class="btn-cancel" onclick="this.closest('.modal-bg').remove()">Закрыть</button></div></div>`;
-    div.onclick=e=>{if(e.target===div)div.remove();};
-    document.body.appendChild(div);return;
-  }
-  const el=document.getElementById(id);if(el)el.classList.add('vis');
-};
+// invite modal inline - merged into main openModal above
+// (openModal already handles all ids, inviteModal2 handled by dynamic creation)
 </script>
 
 <!-- SETTINGS MODAL -->
@@ -1827,6 +1843,86 @@ window.openModal=function(id){
     </div>
   </div>
 </div>
+
+
+<script>
+// ══════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════
+window.openSettings=function(){
+  // Populate profile fields with current user data
+  const nameEl=document.getElementById('sProfileName');
+  const tagEl=document.getElementById('sProfileTag');
+  if(nameEl&&ME) nameEl.textContent=ME.name||'—';
+  if(tagEl&&ME) tagEl.textContent='#'+((ME.tag||'0000'));
+  // Load saved audio settings
+  const ns=localStorage.getItem('vl_noise');
+  const ec=localStorage.getItem('vl_echo');
+  const agc=localStorage.getItem('vl_agc');
+  const vad=localStorage.getItem('vl_vad');
+  const thresh=localStorage.getItem('vl_thresh');
+  if(ns!==null) document.getElementById('sNoise').checked=ns==='1';
+  if(ec!==null) document.getElementById('sEcho').checked=ec==='1';
+  if(agc!==null) document.getElementById('sAGC').checked=agc==='1';
+  if(vad!==null) document.getElementById('sVAD').checked=vad==='1';
+  if(thresh!==null){
+    const sl=document.getElementById('sVADThresh');
+    const vl=document.getElementById('sVADVal');
+    if(sl) sl.value=thresh;
+    if(vl) vl.textContent=thresh;
+  }
+  document.getElementById('settingsBg').style.display='flex';
+  showSPage('profile', document.querySelector('.s-nav-item'));
+};
+
+window.closeSettings=function(){
+  document.getElementById('settingsBg').style.display='none';
+};
+
+window.showSPage=function(id, btn){
+  document.querySelectorAll('.s-page').forEach(p=>p.style.display='none');
+  document.querySelectorAll('.s-nav-item').forEach(b=>b.classList.remove('act'));
+  const page=document.getElementById('spage-'+id);
+  if(page) page.style.display='block';
+  if(btn) btn.classList.add('act');
+};
+
+window.saveAudioSettings=function(){
+  const noise=document.getElementById('sNoise')?.checked;
+  const echo=document.getElementById('sEcho')?.checked;
+  const agc=document.getElementById('sAGC')?.checked;
+  const vad=document.getElementById('sVAD')?.checked;
+  const thresh=document.getElementById('sVADThresh')?.value;
+  localStorage.setItem('vl_noise', noise?'1':'0');
+  localStorage.setItem('vl_echo', echo?'1':'0');
+  localStorage.setItem('vl_agc', agc?'1':'0');
+  localStorage.setItem('vl_vad', vad?'1':'0');
+  if(thresh) localStorage.setItem('vl_thresh', thresh);
+  toast('Настройки','⚙','Сохранено','success');
+};
+
+window.confirmLogout=function(){
+  if(confirm('Выйти из аккаунта? Страница перезагрузится.')) {
+    localStorage.removeItem('vl_name');
+    localStorage.removeItem('vl_color');
+    location.reload();
+  }
+};
+
+window.setTheme=function(t){
+  toast('Тема','🎨','Только тёмная тема поддерживается','info');
+};
+
+// Init: hide all s-pages, show first
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('.s-page').forEach(p=>p.style.display='none');
+});
+
+// Escape closes settings
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') closeSettings();
+});
+</script>
 
 </body>
 </html>

@@ -20,7 +20,7 @@ const server = http.createServer((req, res) => {
   } else { res.writeHead(404); res.end(); }
 });
 
-const wss = new WebSocketServer({ server, maxPayload: 2 * 1024 * 1024 });
+const wss = new WebSocketServer({ server, maxPayload: 4 * 1024 * 1024 });
 
 const send = (uid, data) => {
   const u = users.get(uid);
@@ -46,11 +46,27 @@ wss.on('connection', ws => {
   let me = null;
 
   ws.on('message', (raw, isBinary) => {
-    // Binary = audio chunk
+    // Binary = audio chunk OR screen frame (peek at header)
     if (isBinary) {
       if (!me) return;
       const u = users.get(me);
       if (!u || !u.room) return;
+
+      // Peek at JSON header to check type
+      let nl = -1;
+      for (let i = 0; i < Math.min(raw.length, 256); i++) { if (raw[i] === 10) { nl = i; break; } }
+      if (nl > 0) {
+        try {
+          const hdr = JSON.parse(raw.slice(0, nl).toString('utf8'));
+          if (hdr.type === 'screen_frame') {
+            // Relay screen frame to room (already has full header+jpeg)
+            broadcastRoom(u.room, raw, me);
+            return;
+          }
+        } catch(e) {}
+      }
+
+      // Audio: wrap with header and relay
       const header = JSON.stringify({ type:'audio', from:me, name:u.name, color:u.color });
       const headerBuf = Buffer.from(header + '\n');
       const combined = Buffer.concat([headerBuf, raw]);
