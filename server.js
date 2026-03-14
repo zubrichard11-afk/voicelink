@@ -34,7 +34,7 @@ const broadcast = (data, skip = null) => {
   users.forEach((u, uid) => { if (uid !== skip && u.ws.readyState === 1) u.ws.send(m); });
 };
 const broadcastRoom = (room, data, skip = null) => {
-  const m = typeof data === 'string' ? data : JSON.stringify(data);
+  const m = (typeof data === 'string' || Buffer.isBuffer(data)) ? data : JSON.stringify(data);
   const r = rooms.get(room);
   if (!r) return;
   r.forEach(uid => { if (uid !== skip) { const u = users.get(uid); if (u && u.ws.readyState === 1) u.ws.send(m); } });
