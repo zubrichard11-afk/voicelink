@@ -279,6 +279,44 @@ input,textarea{font-family:var(--font)}
 .ci-ans{background:var(--green);color:#fff}.ci-ans:hover{background:#1a7a42;transform:scale(1.05)}
 .ci-dec{background:var(--red);color:#fff}.ci-dec:hover{background:#c0282b;transform:scale(1.05)}
 
+
+/* CALL WINDOW */
+.cw{position:fixed;inset:0;background:#111217;z-index:300;display:none;flex-direction:column}
+.cw.vis{display:flex}
+.cw-top{display:flex;align-items:center;padding:12px 20px;background:rgba(0,0,0,.3);flex-shrink:0;gap:12px}
+.cw-title{font-size:14px;font-weight:700;color:#fff}
+.cw-subtitle{font-size:12px;color:rgba(255,255,255,.5)}
+.cw-pip{margin-left:auto;display:flex;gap:6px}
+.cw-pip-btn{width:28px;height:28px;border-radius:6px;border:none;background:rgba(255,255,255,.1);color:#fff;font-size:13px;cursor:pointer}
+.cw-pip-btn:hover{background:rgba(255,255,255,.2)}
+.cw-body{flex:1;display:flex;align-items:center;justify-content:center;gap:16px;padding:20px;flex-wrap:wrap;overflow:auto}
+.cw-participant{position:relative;background:#1e2029;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:2px solid transparent;transition:border-color .2s}
+.cw-participant.spk{border-color:#23a55a}
+.cw-participant.big{width:min(640px,70vw);height:min(360px,40vh)}
+.cw-participant.small{width:min(280px,30vw);height:min(180px,20vh)}
+.cw-participant.solo{width:min(480px,60vw);height:min(320px,50vh)}
+.cw-av{width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700}
+.cw-screen{width:100%;height:100%;object-fit:contain;position:absolute;inset:0}
+.cw-name{position:absolute;bottom:8px;left:10px;font-size:12px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);padding:2px 8px;border-radius:8px;display:flex;align-items:center;gap:4px}
+.cw-muted{font-size:10px;color:#ed4245}
+.cw-bar{height:72px;background:#1a1d27;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;gap:12px;flex-shrink:0;padding:0 20px}
+.cw-btn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;font-size:20px;cursor:pointer;transition:all .15s;position:relative}
+.cw-btn-label{position:absolute;bottom:-18px;font-size:9px;white-space:nowrap;color:rgba(255,255,255,.6);left:50%;transform:translateX(-50%)}
+.cw-mic{background:#36393f;color:#fff}.cw-mic:hover{background:#4a4e59}.cw-mic.off{background:rgba(237,66,69,.2);color:#ed4245}
+.cw-deaf{background:#36393f;color:#fff}.cw-deaf:hover{background:#4a4e59}.cw-deaf.off{background:rgba(237,66,69,.2);color:#ed4245}
+.cw-screen-btn{background:#36393f;color:#fff}.cw-screen-btn:hover{background:#4a4e59}.cw-screen-btn.on{background:rgba(88,101,242,.3);color:#5865f2}
+.cw-end{background:#ed4245;color:#fff;width:52px;height:52px}.cw-end:hover{background:#c0282b;transform:scale(1.05)}
+.cw-vol-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+.cw-vol-wrap input{width:80px;accent-color:#5865f2}
+.cw-vol-label{font-size:9px;color:rgba(255,255,255,.5)}
+.cw-participants-side{width:200px;background:rgba(0,0,0,.2);border-left:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;padding:12px;gap:8px;flex-shrink:0}
+.cw-side-title{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.4);margin-bottom:4px}
+.cw-side-user{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.05)}
+.cw-side-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.cw-side-name{font-size:12px;font-weight:600;flex:1}
+.cw-side-spk{width:8px;height:8px;border-radius:50%;background:#747f8d}
+.cw-side-spk.on{background:#23a55a;animation:pdot 1s ease-in-out infinite}
+
 #toastBox{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999}
 .toast{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:11px 16px;min-width:240px;max-width:320px;animation:fadein .2s ease;box-shadow:0 8px 24px rgba(0,0,0,.5);cursor:pointer}
 .toast-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:3px}
@@ -459,6 +497,45 @@ input,textarea{font-family:var(--font)}
   </div>
 </div>
 
+
+<!-- CALL WINDOW -->
+<div class="cw" id="callWindow">
+  <div class="cw-top">
+    <div>
+      <div class="cw-title" id="cwTitle">Голосовой звонок</div>
+      <div class="cw-subtitle" id="cwSubtitle">Подключение...</div>
+    </div>
+    <div class="cw-pip">
+      <button class="cw-pip-btn" onclick="toggleCWSize()" title="Свернуть">⊡</button>
+    </div>
+  </div>
+  <div style="display:flex;flex:1;overflow:hidden">
+    <div class="cw-body" id="cwBody"></div>
+    <div class="cw-participants-side" id="cwSide"></div>
+  </div>
+  <div class="cw-bar">
+    <div class="cw-vol-wrap">
+      <input type="range" min="0" max="200" value="100" oninput="setVolume(this.value)">
+      <div class="cw-vol-label">Громкость</div>
+    </div>
+    <button class="cw-btn cw-screen-btn" id="cwScreenBtn" onclick="toggleScreenShare()" style="position:relative">
+      🖥<span class="cw-btn-label">Демонстрация</span>
+    </button>
+    <button class="cw-btn cw-mic" id="cwMicBtn" onclick="toggleMic()" style="position:relative">
+      🎙<span class="cw-btn-label">Микрофон</span>
+    </button>
+    <button class="cw-btn cw-end" onclick="leaveVoice()" style="position:relative">
+      📵<span class="cw-btn-label">Завершить</span>
+    </button>
+    <button class="cw-btn cw-deaf" id="cwDeafBtn" onclick="toggleDeaf()" style="position:relative">
+      🎧<span class="cw-btn-label">Звук</span>
+    </button>
+    <button class="cw-btn cw-screen-btn" onclick="document.getElementById('callWindow').classList.remove('vis')" style="position:relative;background:rgba(255,255,255,.08)">
+      ⊟<span class="cw-btn-label">Скрыть</span>
+    </button>
+  </div>
+</div>
+
 <div id="toastBox"></div>
 
 <script>
@@ -480,6 +557,9 @@ let currentDMId=null;
 let currentView='friends';
 let currentSrvCh='general';
 let micMuted=false,deafMuted=false;
+let screenSharing=false;
+let screenStream=null;
+let cwMinimized=false;
 let inVoice=false,currentVoiceRoom='';
 let ppTarget=null;
 let currentMode='dm';
@@ -607,7 +687,9 @@ function handleWS(d){
     case 'speaking':
       if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][d.uid])
         vcRooms[currentVoiceRoom][d.uid].speaking=d.speaking;
-      renderVCUsers();updateVCBar();break;
+      renderVCUsers();updateVCBar();
+      if(inVoice)updateCallWindow();
+      break;
   }
 }
 
@@ -674,20 +756,26 @@ function getRemoteCtx(){
 }
 function handleAudioChunk(buf){
   if(deafMuted) return;
-  // buf = header\npcm_i16
   const bytes=new Uint8Array(buf);
   let nl=-1;
   for(let i=0;i<bytes.length;i++){if(bytes[i]===10){nl=i;break;}}
   if(nl<0) return;
+  // Parse header to get sender uid
+  try{
+    const header=JSON.parse(new TextDecoder().decode(bytes.slice(0,nl)));
+    if(header.from===myUid) return; // don't play own audio back
+  }catch{}
   const pcmBuf=buf.slice(nl+1);
   const i16=new Int16Array(pcmBuf);
   const f32=new Float32Array(i16.length);
-  for(let i=0;i<i16.length;i++) f32[i]=i16[i]/32767;
-  const abuf=remoteCtx.createBuffer(1,f32.length,SAMPLE_RATE);
+  const gain=window._volumeGain||1;
+  for(let i=0;i<i16.length;i++) f32[i]=(i16[i]/32767)*gain;
+  const ctx=getRemoteCtx();
+  const abuf=ctx.createBuffer(1,f32.length,SAMPLE_RATE);
   abuf.copyToChannel(f32,0);
-  const src=remoteCtx.createBufferSource();
+  const src=ctx.createBufferSource();
   src.buffer=abuf;
-  src.connect(remoteCtx.destination);
+  src.connect(ctx.destination);
   src.start();
 }
 
@@ -1012,6 +1100,10 @@ window.joinVoice=function(room, peerId){
   startMicRelay().then(ok=>{
     if(!ok) toast('Голосовой','🔊','В канале (без микрофона)','info');
   });
+  // Open call window
+  const isDM=room.startsWith('dm:');
+  const peerName=peerId?getUser(peerId).name:'';
+  openCallWindow(isDM?('📞 '+peerName):('🔊 '+room), isDM?'Голосовой звонок':'Голосовой канал');
 };
 
 function updateCallPanel(){
@@ -1025,12 +1117,93 @@ function updateCallPanel(){
   el.innerHTML=html;
 }
 
-window.setVolume=function(val){ window._volumeGain=val/100; };
-window.toggleScreen=function(){
-  const btn=document.getElementById('cpScreen');if(!btn)return;
-  const active=btn.classList.toggle('active');
-  toast('Демонстрация','🖥',active?'Скоро будет доступна!':'Остановлена','info');
+window.setVolume=function(val){
+  window._volumeGain=val/100;
+  document.querySelectorAll('.cw-vol-wrap input').forEach(el=>el.value=val);
 };
+
+window.toggleScreenShare=async function(){
+  if(screenSharing){
+    stopScreenShare();
+    return;
+  }
+  try{
+    screenStream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30,width:1280},audio:false});
+    screenSharing=true;
+    const btn=document.getElementById('cwScreenBtn');if(btn)btn.classList.add('on');
+    const cpBtn=document.getElementById('cpScreen');if(cpBtn)cpBtn.classList.add('active');
+    // Show own screen in call window
+    updateCallWindow();
+    toast('Демонстрация','🖥','Демонстрация экрана начата','success');
+    screenStream.getVideoTracks()[0].onended=()=>stopScreenShare();
+    // Send screen via relay - future feature, for now show locally
+  }catch(e){
+    if(e.name!=='NotAllowedError') toast('Демонстрация','🖥','Ошибка: '+e.message,'error');
+  }
+};
+
+function stopScreenShare(){
+  screenSharing=false;
+  if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
+  const btn=document.getElementById('cwScreenBtn');if(btn)btn.classList.remove('on');
+  const cpBtn=document.getElementById('cpScreen');if(cpBtn)cpBtn.classList.remove('active');
+  updateCallWindow();
+  toast('Демонстрация','🖥','Остановлена','info');
+}
+
+window.toggleCWSize=function(){
+  cwMinimized=!cwMinimized;
+  const cw=document.getElementById('callWindow');
+  if(cwMinimized){ cw.style.width='320px';cw.style.height='200px';cw.style.top='auto';cw.style.bottom='80px';cw.style.right='20px';cw.style.left='auto';cw.style.position='fixed'; }
+  else{ cw.style.cssText=''; }
+};
+
+function openCallWindow(title, subtitle){
+  const cw=document.getElementById('callWindow');
+  document.getElementById('cwTitle').textContent=title;
+  document.getElementById('cwSubtitle').textContent=subtitle;
+  cw.classList.add('vis');
+  updateCallWindow();
+}
+
+function updateCallWindow(){
+  const body=document.getElementById('cwBody');
+  const side=document.getElementById('cwSide');
+  if(!body||!side) return;
+  const users=vcRooms[currentVoiceRoom]||{};
+  const allUsers=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true},...Object.entries(users).map(([uid,u])=>({uid,...u,isMe:false}))];
+  const count=allUsers.length;
+
+  // Main body - participants as tiles
+  body.innerHTML=allUsers.map((u,i)=>{
+    const sizeClass=count===1?'solo':count===2?'big':'small';
+    const isScreen=screenSharing&&u.isMe;
+    return `<div class="cw-participant ${sizeClass}${u.speaking?' spk':''}">
+      ${isScreen&&screenStream?`<video class="cw-screen" id="screenVideo" autoplay muted></video>`:''}
+      <div class="cw-av" style="background:${u.color};${isScreen?'opacity:.3':''}">
+        ${u.init}
+      </div>
+      <div class="cw-name">
+        ${u.isMe?'🎙':''} ${esc(u.name)}${u.isMe?' (я)':''}
+        ${u.speaking?'<span style="color:#23a55a">●</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Attach screen stream to video element
+  if(screenSharing&&screenStream){
+    const vid=document.getElementById('screenVideo');
+    if(vid){vid.srcObject=screenStream;vid.play().catch(()=>{});}
+  }
+
+  // Side panel
+  side.innerHTML='<div class="cw-side-title">Участники ('+allUsers.length+')</div>'+
+    allUsers.map(u=>`<div class="cw-side-user">
+      <div class="cw-side-av" style="background:${u.color}">${u.init}</div>
+      <div class="cw-side-name">${esc(u.name)}${u.isMe?' (я)':''}</div>
+      <div class="cw-side-spk${u.speaking?' on':''}"></div>
+    </div>`).join('');
+}
 
 window.leaveVoice=function(){
   if(!inVoice)return;
@@ -1038,12 +1211,15 @@ window.leaveVoice=function(){
   wsSend({type:'leave_voice'});
   stopMicRelay();
   document.getElementById('vbar').classList.remove('vis');
-  document.getElementById('callPanel').classList.remove('vis');
+  const panel=document.getElementById('callPanel');if(panel)panel.classList.remove('vis');
+  const cw=document.getElementById('callWindow');if(cw){cw.classList.remove('vis');cw.style.cssText='';}
+  stopScreenShare();
   toast('Голосовой','👋','Вы вышли','info');
 };
 
 function renderVCUsers(){
   updateCallPanel();
+  if(inVoice)updateCallWindow();
   ['Gaming Lounge','Chill Zone'].forEach((room,i)=>{
     const el=document.getElementById('vcUsers'+(i+1));
     const cnt=document.getElementById('vcCount'+(i+1));
@@ -1103,12 +1279,14 @@ window.toggleMic=function(){
   ['micBtn','micBtnS'].forEach(id=>{const b=document.getElementById(id);if(!b)return;b.textContent=icon;b.classList.toggle('danger',micMuted);});
   const vb=document.getElementById('vbMic');if(vb){vb.textContent=icon+' Mic';vb.classList.toggle('mut',micMuted);}
   const cp=document.getElementById('cpMic');if(cp){cp.textContent=icon;cp.classList.toggle('muted',micMuted);}
+  const cwMic=document.getElementById('cwMicBtn');if(cwMic){cwMic.textContent=icon;cwMic.classList.toggle('off',micMuted);}
   toast(micMuted?'Замьючен':'Размьючен',icon,'','info');
 };
 window.toggleDeaf=function(){
   deafMuted=!deafMuted;
   ['deafBtn','vbSnd'].forEach(id=>{const b=document.getElementById(id);if(b)b.classList.toggle('danger',deafMuted);});
   const cp=document.getElementById('cpDeaf');if(cp)cp.classList.toggle('muted',deafMuted);
+  const cwDeaf=document.getElementById('cwDeafBtn');if(cwDeaf)cwDeaf.classList.toggle('off',deafMuted);
 };
 window.setVolume=function(val){
   const gain=val/100;
