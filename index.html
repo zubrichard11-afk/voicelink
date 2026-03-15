@@ -53,7 +53,7 @@ input,textarea{font-family:var(--font)}
 .rail-sep{width:32px;height:1px;background:var(--border2);margin:4px 0;flex-shrink:0}
 .rail-add{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--bg2);border:none;color:var(--green);font-size:24px;transition:all .15s;flex-shrink:0}
 .rail-add:hover{border-radius:16px}
-.sidebar{background:var(--bg2);display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border);position:relative}
+.sidebar{background:var(--bg2);display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
 .sb-head{padding:0 16px;height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .sb-title{font-size:13px;font-weight:700}
 .sb-body{flex:1;overflow-y:auto;padding:6px 0}
@@ -158,7 +158,7 @@ input,textarea{font-family:var(--font)}
 .cmd-hint{font-size:11px;color:var(--text2);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap}
 .cmd-hint span{cursor:pointer;transition:color .1s}
 .cmd-hint span:hover{color:var(--accent)}
-.vbar{position:absolute;bottom:52px;left:0;width:100%;background:#1d2b1f;border-top:1px solid rgba(35,165,90,.25);padding:0;display:none;z-index:20;animation:slideUp .2s ease}
+.vbar{background:#1d2b1f;border-top:1px solid rgba(35,165,90,.25);padding:0;display:none;flex-shrink:0}
 .vbar.vis{display:block}
 @keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .vbar-top{padding:8px 10px 4px;display:flex;align-items:center;justify-content:space-between}
@@ -665,6 +665,21 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
   from { opacity:0; transform:translateX(-4px); }
   to   { opacity:1; transform:translateX(0); }
 }
+
+/* Voice message bubble */
+.vm-bubble { background: var(--bg3); border-radius: 20px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px; max-width: 280px; }
+.vm-bubble audio { height: 32px; flex: 1; min-width: 160px; }
+
+/* File attachment */
+.file-attach { display: inline-flex; align-items: center; gap: 10px; background: var(--bg3); border: 1px solid rgba(255,255,255,.06); border-radius: 8px; padding: 10px 14px; cursor: pointer; transition: background .15s; max-width: 300px; }
+.file-attach:hover { background: var(--bg4); }
+
+/* Input buttons */
+.inp-btn { transition: color .15s, transform .1s; }
+.inp-btn:hover { color: var(--text0); transform: scale(1.1); }
+
+/* Recording indicator pulse */
+@keyframes recPulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 </style>
 </head>
 <body>
@@ -691,14 +706,15 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
   <div class="rail-sep"></div>
   <button class="rail-add" onclick="openModal('createSrvModal')" title="Создать сервер">+</button>
 </div>
-<div class="sidebar">
-  <div id="dmSidebar" style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+<div class="sidebar" style="display:flex;flex-direction:column;position:relative">
+  <!-- Dynamic content area (DM or Server channels) -->
+  <div id="dmSidebar" style="display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0">
     <div class="sb-head">
       <span class="sb-title">VoiceLink</span>
       <span id="wsDot" style="font-size:18px;color:var(--red)">●</span>
     </div>
     <div class="dm-search"><input placeholder="Найти или начать беседу" oninput="filterDMs(this.value)"></div>
-    <div class="sb-body">
+    <div class="sb-body" style="flex:1;overflow-y:auto;min-height:0">
       <button class="nav-item act" id="navFriends" onclick="showFriends()">
         <span class="nav-icon">👥</span><span class="nav-lbl">Друзья</span>
         <span class="nav-badge" id="reqBadge" style="display:none">0</span>
@@ -706,19 +722,10 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
       <div class="sec-label">Личные сообщения<button class="sec-add" onclick="openModal('addFriendModal')">+</button></div>
       <div id="dmList"></div>
     </div>
-    <div class="user-panel">
-      <div class="my-av" id="myAvEl"></div>
-      <div class="my-info"><div class="my-name" id="myNameEl">—</div><div class="my-tag" id="myTagEl">—</div></div>
-      <div class="ctrl-btns">
-        <button class="cb" id="micBtn" onclick="toggleMic()" title="Микрофон (Ctrl+M)" style="position:relative">🎙</button>
-        <button class="cb" id="deafBtn" onclick="toggleDeaf()" title="Заглушить звук">🎧</button>
-        <button class="cb" onclick="openSettings()" title="Настройки" style="font-size:15px">⚙</button>
-      </div>
-    </div>
   </div>
-  <div id="srvSidebar" style="display:none;flex-direction:column;height:100%;overflow:hidden">
+  <div id="srvSidebar" style="display:none;flex-direction:column;flex:1;overflow:hidden;min-height:0">
     <div class="sb-head"><span class="sb-title" id="srvSbName">VoiceLink HQ</span></div>
-    <div class="sb-body">
+    <div class="sb-body" style="flex:1;overflow-y:auto;min-height:0">
       <div class="ch-sec-lbl"><span>▾ Текстовые</span><button class="ch-add" onclick="addChannel('text')" title="Добавить текстовый канал">+</button></div>
       <div id="textChannelList" style="display:contents">
         <button class="ch-item act" id="chGeneral" onclick="openSrvCh(this,'general','Основной чат')"><span class="ch-icon">#</span><span class="ch-name">general</span></button>
@@ -737,13 +744,37 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
         </button>
       </div>
     </div>
-    <div class="user-panel">
-      <div class="my-av" id="myAvSrv" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700"></div>
-      <div class="my-info"><div class="my-name" id="myNameSrv">—</div><div class="my-tag">VoiceLink</div></div>
-      <div class="ctrl-btns">
-        <button class="cb" id="micBtnS" onclick="toggleMic()">🎙</button>
-        <button class="cb" onclick="toggleDeaf()">🎧</button>
+  </div>
+
+  <!-- Voice bar — inside sidebar, above user panel -->
+  <div class="vbar" id="vbar">
+    <div class="vbar-top">
+      <div>
+        <div class="vbar-room" id="vbarRoom">Gaming Lounge</div>
+        <div class="vbar-stat">Голосовой · <span class="ping-tag" id="vbarPing">—</span></div>
       </div>
+      <button onclick="document.getElementById('callWindow').classList.toggle('vis')" style="background:none;border:none;color:rgba(35,165,90,.7);font-size:16px;cursor:pointer;padding:0" title="Окно звонка">⛶</button>
+    </div>
+    <div class="vbar-users" id="vbarUsers"></div>
+    <div class="vbar-btns">
+      <button class="vb-btn" id="vbMic" onclick="toggleMic()" title="Микрофон">🎙</button>
+      <button class="vb-btn" id="vbSnd" onclick="toggleDeaf()" title="Звук">🎧</button>
+      <button class="vb-btn" onclick="toggleScreenShare()" title="Демонстрация">🖥</button>
+      <button class="vb-leave" onclick="leaveVoice()" title="Выйти">📵</button>
+    </div>
+  </div>
+
+  <!-- ONE user panel — always at bottom, shared between DM and Server views -->
+  <div class="user-panel" id="userPanel">
+    <div class="my-av" id="myAvEl" style="cursor:pointer" onclick="openSettings()" title="Профиль"></div>
+    <div class="my-info" style="flex:1;min-width:0">
+      <div class="my-name" id="myNameEl">—</div>
+      <div class="my-tag" id="myTagEl">—</div>
+    </div>
+    <div class="ctrl-btns">
+      <button class="cb" id="micBtn" onclick="toggleMic()" title="Микрофон (Ctrl+M)">🎙</button>
+      <button class="cb" id="deafBtn" onclick="toggleDeaf()" title="Заглушить звук">🎧</button>
+      <button class="cb" onclick="openSettings()" title="Настройки" style="font-size:15px">⚙</button>
     </div>
   </div>
 </div>
@@ -1271,7 +1302,7 @@ function handleScreenFrame(hdr,jpegBuf){
 function launchApp(){
   document.getElementById('setupScreen').style.display='none';
   document.getElementById('appRoot').style.display='grid';
-  ['myAvEl','myAvSrv'].forEach(id=>{
+  ['myAvEl'].forEach(id=>{
     const el=document.getElementById(id);if(!el)return;
     el.style.background=ME.color;el.textContent=ME.init;
     const dot=document.createElement('div');
@@ -1346,9 +1377,11 @@ window.openDM=function(uid){
     <div class="typing-wrap" id="dmTyping"></div>
     <div class="inp-wrap">
       <div class="inp-box">
-        <button class="inp-btn">+</button>
+        <input type="file" id="dmFileInp" style="display:none" onchange="sendFile(this,'dm','${uid}')">
+        <button class="inp-btn" onclick="document.getElementById('dmFileInp').click()" title="Прикрепить файл" style="font-size:18px">+</button>
         <textarea class="chat-inp" id="dmInp" placeholder="Написать @${esc(u.name)}..." rows="1"
           oninput="autoResize(this)" onkeydown="handleKey(event,'dm','${uid}')"></textarea>
+        <button class="inp-btn" onclick="startVoiceMsgDM('${uid}')" id="dmVoiceBtn" title="Голосовое сообщение">🎤</button>
         <button class="inp-btn">😊</button>
         <button class="inp-send" onclick="sendDM('${uid}')">➤</button>
       </div>
@@ -1375,9 +1408,116 @@ function renderDMMsgs(uid){
   el.innerHTML=html;el.scrollTop=el.scrollHeight;
 }
 
+// ══════════════════════════════════════
+// FILE ATTACHMENTS + VOICE MESSAGES
+// ══════════════════════════════════════
+
+window.sendFile=function(input, ctx, target){
+  const file=input.files[0];
+  if(!file) return;
+  input.value='';
+  const maxMB=10;
+  if(file.size>maxMB*1024*1024){toast('Файл','📎','Максимум '+maxMB+'МБ','error');return;}
+
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const dataUrl=e.target.result;
+    const isImage=file.type.startsWith('image/');
+    const isAudio=file.type.startsWith('audio/');
+    const msgText=isImage
+      ? `<div style="margin-top:4px"><img src="${dataUrl}" style="max-width:320px;max-height:240px;border-radius:8px;cursor:pointer;display:block" onclick="window.open('${dataUrl}')"></div>`
+      : isAudio
+        ? `<div style="margin-top:4px"><audio controls style="max-width:300px"><source src="${dataUrl}" type="${file.type}"></audio></div>`
+        : `<div style="margin-top:4px;display:inline-flex;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:8px 12px;cursor:pointer" onclick="downloadDataUrl('${dataUrl}','${esc(file.name)}')"><span style="font-size:20px">📎</span><div><div style="font-size:13px;font-weight:600;color:var(--text0)">${esc(file.name)}</div><div style="font-size:11px;color:var(--text2)">${(file.size/1024).toFixed(0)} KB</div></div></div>`;
+
+    const now=new Date();
+    const time=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+    const msg={from:myUid,fromName:ME.name,fromColor:ME.color,fromInit:ME.init,fromRole:myRole,text:msgText,time,ts:Date.now()};
+
+    if(ctx==='dm'){
+      if(!dmConvs[target])dmConvs[target]=[];
+      dmConvs[target].push(msg);
+      appendMsg(msg,target);
+      wsSend({type:'dm',to:target,text:msgText,time});
+    } else {
+      if(!srvMsgs[target])srvMsgs[target]=[];
+      srvMsgs[target].push(msg);
+      appendMsg(msg,target);
+      wsSend({type:'chat',channel:target,text:msgText,time});
+    }
+  };
+  reader.readAsDataURL(file);
+};
+
+window.downloadDataUrl=function(dataUrl,filename){
+  const a=document.createElement('a');a.href=dataUrl;a.download=filename;a.click();
+};
+
+// ── Voice messages ──
+let voiceRecorder=null;
+let voiceChunks=[];
+let voiceRecording=false;
+let voiceCtx=null;
+let voiceTarget=null;
+
+function startVoiceMsg(ctx, target){
+  if(voiceRecording){stopVoiceMsg();return;}
+  const btnId=ctx==='dm'?'dmVoiceBtn':'srvVoiceBtn';
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+    voiceCtx={ctx,target};
+    voiceChunks=[];
+    voiceRecorder=new MediaRecorder(stream,{mimeType:'audio/webm'});
+    voiceRecorder.ondataavailable=e=>{if(e.data.size>0)voiceChunks.push(e.data);};
+    voiceRecorder.onstop=()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(voiceChunks,{type:'audio/webm'});
+      const reader=new FileReader();
+      reader.onload=e=>{
+        const dataUrl=e.target.result;
+        const dur=Math.round((Date.now()-voiceStart)/1000);
+        const msgText=`<div style="margin-top:4px;display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:20px;padding:6px 12px;max-width:280px">
+          <span style="font-size:18px">🎤</span>
+          <audio controls style="flex:1;height:32px;min-width:0"><source src="${dataUrl}" type="audio/webm"></audio>
+          <span style="font-size:11px;color:var(--text2);flex-shrink:0">${dur}с</span>
+        </div>`;
+        const now=new Date();
+        const time=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+        const msg={from:myUid,fromName:ME.name,fromColor:ME.color,fromInit:ME.init,fromRole:myRole,text:msgText,time,ts:Date.now()};
+        const {ctx:c,target:t}=voiceCtx;
+        if(c==='dm'){if(!dmConvs[t])dmConvs[t]=[];dmConvs[t].push(msg);appendMsg(msg,t);wsSend({type:'dm',to:t,text:msgText,time});}
+        else{if(!srvMsgs[t])srvMsgs[t]=[];srvMsgs[t].push(msg);appendMsg(msg,t);wsSend({type:'chat',channel:t,text:msgText,time});}
+      };
+      reader.readAsDataURL(blob);
+      voiceRecording=false;
+      const btn=document.getElementById(btnId);
+      if(btn){btn.textContent='🎤';btn.style.color='';}
+      document.getElementById('voiceRecIndicator')?.remove();
+    };
+    voiceRecorder.start();
+    voiceRecording=true;
+    voiceStart=Date.now();
+    const btn=document.getElementById(btnId);
+    if(btn){btn.textContent='⏹';btn.style.color='var(--red)';}
+    // Show recording indicator
+    const ind=document.createElement('div');
+    ind.id='voiceRecIndicator';
+    ind.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(237,66,69,.9);color:#fff;border-radius:20px;padding:8px 16px;font-size:13px;font-family:var(--font);z-index:9999;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+    ind.innerHTML='<span style="width:8px;height:8px;border-radius:50%;background:#fff;animation:pdot 1s ease-in-out infinite;display:inline-block"></span>Запись... (нажми 🎤 чтобы остановить)';
+    document.body.appendChild(ind);
+    toast('Голосовое','🎤','Запись началась — нажми 🎤 снова','info');
+  }).catch(()=>toast('Микрофон','🎤','Нет доступа','error'));
+}
+
+let voiceStart=0;
+window.startVoiceMsgDM=function(uid){startVoiceMsg('dm',uid);};
+window.startVoiceMsgSrv=function(ch){startVoiceMsg('srv',ch);};
+function stopVoiceMsg(){if(voiceRecorder&&voiceRecording)voiceRecorder.stop();}
+
 // Format message text: bold, italic, code, links
 function formatMsgText(txt){
   if(!txt) return '';
+  // If text contains HTML tags (file/voice messages) — render as-is
+  if(txt.includes('<img ')||txt.includes('<audio ')||txt.includes('<div style=')){return txt;}
   let s=esc(txt);
   s=s.replace(/`([^`]+)`/g,'<code>$1</code>');
   s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
@@ -1420,9 +1560,11 @@ window.openSrvCh=function(btn,ch,desc){
     <div class="typing-wrap" id="srvTyping"></div>
     <div class="inp-wrap">
       <div class="inp-box">
-        <button class="inp-btn">+</button>
+        <input type="file" id="srvFileInp" style="display:none" onchange="sendFile(this,'srv','${ch}')">
+        <button class="inp-btn" onclick="document.getElementById('srvFileInp').click()" title="Прикрепить файл" style="font-size:18px">+</button>
         <textarea class="chat-inp" id="srvInp" placeholder="Написать в #${ch}..." rows="1"
           oninput="autoResize(this)" onkeydown="handleKey(event,'srv',null)"></textarea>
+        <button class="inp-btn" onclick="startVoiceMsgSrv('${ch}')" id="srvVoiceBtn" title="Голосовое сообщение">🎤</button>
         <button class="inp-btn">😊</button>
         <button class="inp-send" onclick="sendSrv('${ch}')">➤</button>
       </div>
@@ -1637,8 +1779,7 @@ window.joinVoice=function(room, peerId){
     if(cpName) cpName.textContent=room;
     if(cpStatus) cpStatus.textContent='🔊 Голосовой канал';
   }
-  const panel=document.getElementById('callPanel');
-  if(panel) panel.classList.add('vis');
+  // call-panel removed — voice shown in sidebar vbar
   wsSend({type:'join_voice',room});
   getRemoteCtx();
   startMicRelay().then(ok=>{
@@ -2063,7 +2204,7 @@ window.leaveVoice=function(){
   wsSend({type:'leave_voice'});
   stopMicRelay();
   document.getElementById('vbar').classList.remove('vis');
-  const panel=document.getElementById('callPanel');if(panel)panel.classList.remove('vis');
+  // call-panel removed
   const cw=document.getElementById('callWindow');if(cw){cw.classList.remove('vis');cw.style.cssText='';}
   const wgt=document.getElementById('voiceWidget');if(wgt)wgt.style.display='none';
   stopScreenShare();
@@ -2152,7 +2293,7 @@ window.declineCall=function(){
 window.toggleMic=function(){
   micMuted=!micMuted;
   const icon=micMuted?'🔇':'🎙';
-  ['micBtn','micBtnS'].forEach(id=>{const b=document.getElementById(id);if(!b)return;b.textContent=icon;b.classList.toggle('danger',micMuted);});
+  const micBtnEl=document.getElementById('micBtn');if(micBtnEl){micBtnEl.textContent=icon;micBtnEl.classList.toggle('danger',micMuted);}
   const vb=document.getElementById('vbMic');if(vb){vb.textContent=icon+' Mic';vb.classList.toggle('mut',micMuted);}
   const cp=document.getElementById('cpMic');if(cp){cp.textContent=icon;cp.classList.toggle('muted',micMuted);}
   const cwMic=document.getElementById('cwMicBtn');if(cwMic){cwMic.textContent=icon;cwMic.classList.toggle('off',micMuted);}
@@ -2567,7 +2708,7 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
       <button class="s-close" onclick="closeSettings()" style="position:sticky;float:right;margin-bottom:-32px">✕</button>
 
       <!-- PROFILE -->
-      <div class="s-page vis" id="spage-profile">
+      <div class="s-page" id="spage-profile">
         <div class="s-title">Мой профиль</div>
         <div class="s-subtitle">Настройте как вас видят другие</div>
         <div class="s-section">
@@ -3539,7 +3680,10 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&document.getElementById('settingsBg')?.style.display==='flex')closeSettings();
+  if(e.key==='Escape'){
+    // Close topmost overlay in order
+    if(document.getElementById('settingsBg')?.style.display==='flex'){closeSettings();return;}
+  }
 });
 </script>
 
