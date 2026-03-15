@@ -293,41 +293,35 @@ input,textarea{font-family:var(--font)}
 .ci-dec{background:var(--red);color:#fff}.ci-dec:hover{background:#c0282b;transform:scale(1.05)}
 
 
-/* CALL WINDOW — Discord style: participants grid top, controls bottom */
-.cw{position:fixed;top:0;right:0;width:360px;height:100vh;background:#111317;z-index:250;display:none;flex-direction:column;border-left:1px solid rgba(255,255,255,.07);box-shadow:-4px 0 24px rgba(0,0,0,.5)}
+/* ══ CALL WINDOW — Discord style full overlay ══ */
+.cw{position:fixed;top:0;left:72px;right:0;bottom:0;background:#1a1b1e;z-index:200;display:none;flex-direction:column}
 .cw.vis{display:flex}
-.cw-top{display:flex;align-items:center;padding:12px 16px;background:#0e1014;flex-shrink:0;gap:10px;border-bottom:1px solid rgba(255,255,255,.06);min-height:52px}
+/* Top bar — thin info strip */
+.cw-top{display:flex;align-items:center;padding:0 20px;height:48px;background:#111214;flex-shrink:0;gap:12px;border-bottom:1px solid rgba(255,255,255,.05)}
 .cw-title{font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;gap:7px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cw-title::before{content:'';width:8px;height:8px;background:var(--green);border-radius:50%;flex-shrink:0;animation:pdot 2s ease-in-out infinite}
 .cw-subtitle{font-size:11px;color:rgba(255,255,255,.4);white-space:nowrap}
-/* Participant grid — top area */
-.cw-body{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px;overflow-y:auto;flex:1;align-content:start}
-.cw-body::-webkit-scrollbar{width:3px}.cw-body::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
-.cw-participant{position:relative;background:#1a1d27;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid transparent;transition:border-color .2s;aspect-ratio:1;min-height:0}
-.cw-participant.spk{border-color:#23a55a;box-shadow:0 0 0 1px rgba(35,165,90,.3)}
-.cw-participant.big,.cw-participant.solo{grid-column:1/-1;aspect-ratio:16/9}
-.cw-participant.small{}
-.cw-av{border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;width:56px;height:56px}
-.cw-participant.big .cw-av,.cw-participant.solo .cw-av{width:80px;height:80px;font-size:32px}
+/* Participant tiles grid — fills all space */
+.cw-body{flex:1;display:grid;gap:4px;padding:12px;overflow:hidden;align-content:center;justify-content:center}
+.cw-participant{position:relative;background:#2b2d31;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid transparent;transition:border-color .15s}
+.cw-participant.spk{border-color:#23a55a;box-shadow:0 0 0 1px rgba(35,165,90,.25) inset}
+.cw-av{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700}
 .cw-screen{width:100%;height:100%;object-fit:contain;position:absolute;inset:0}
-.cw-name{font-size:11px;font-weight:600;color:rgba(255,255,255,.85);margin-top:6px;text-align:center;padding:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;position:static;background:none}
-/* Speaking glow ring */
-.cw-participant.spk .cw-av{box-shadow:0 0 0 3px rgba(35,165,90,.7)}
-.cw-participant.spk .cw-name::after{content:' ●';color:#23a55a}
-/* Controls bar at bottom — Discord style */
-.cw-bar{background:#0e1014;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;gap:10px;flex-shrink:0;padding:14px 16px}
-.cw-btn{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;font-size:19px;cursor:pointer;transition:all .15s;position:relative;flex-shrink:0}
-.cw-btn-label{position:absolute;bottom:-16px;font-size:9px;white-space:nowrap;color:rgba(255,255,255,.5);left:50%;transform:translateX(-50%)}
-.cw-mic{background:#2b2d31;color:#dcddde}.cw-mic:hover{background:#3c3f47}.cw-mic.off{background:rgba(237,66,69,.25);color:#ed4245;box-shadow:0 0 0 2px rgba(237,66,69,.4)}
-.cw-deaf{background:#2b2d31;color:#dcddde}.cw-deaf:hover{background:#3c3f47}.cw-deaf.off{background:rgba(237,66,69,.25);color:#ed4245;box-shadow:0 0 0 2px rgba(237,66,69,.4)}
-.cw-screen-btn{background:#2b2d31;color:#dcddde}.cw-screen-btn:hover{background:#3c3f47}.cw-screen-btn.on{background:rgba(88,101,242,.35);color:#5865f2;box-shadow:0 0 0 2px rgba(88,101,242,.5)}
-.cw-end{background:#ed4245;color:#fff;width:46px;height:46px}.cw-end:hover{background:#c0282b;transform:scale(1.05)}
-.cw-vol-wrap{display:flex;flex-direction:column;align-items:center;gap:3px}
-.cw-vol-wrap input{width:70px;accent-color:#5865f2}
-.cw-vol-label{font-size:9px;color:rgba(255,255,255,.4)}
-/* No more side panel — single column layout */
+.cw-name{font-size:12px;font-weight:600;color:rgba(255,255,255,.9);margin-top:8px;text-align:center;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+/* Bottom control bar — Discord style centered */
+.cw-bar{background:#111214;border-top:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;gap:8px;flex-shrink:0;padding:16px 20px;position:relative}
+.cw-btn{height:40px;border-radius:20px;display:flex;align-items:center;justify-content:center;border:none;font-size:18px;cursor:pointer;transition:all .15s;flex-shrink:0;padding:0 14px;gap:6px;font-family:var(--font)}
+.cw-btn-label{font-size:11px;color:rgba(255,255,255,.7);font-weight:500}
+.cw-mic{background:#404249;color:#fff;min-width:80px}.cw-mic:hover{background:#4f5258}.cw-mic.off{background:rgba(237,66,69,.25);color:#ed4245}
+.cw-deaf{background:#404249;color:#fff;min-width:80px}.cw-deaf:hover{background:#4f5258}.cw-deaf.off{background:rgba(237,66,69,.25);color:#ed4245}
+.cw-screen-btn{background:#404249;color:#fff;min-width:80px}.cw-screen-btn:hover{background:#4f5258}.cw-screen-btn.on{background:rgba(88,101,242,.4);color:#7289da}
+.cw-end{background:#ed4245;color:#fff;border-radius:50%;width:44px;height:44px;padding:0;min-width:unset}.cw-end:hover{background:#c0282b;transform:scale(1.05)}
+.cw-btn-icon{font-size:18px}
+/* Expand button top-right */
+.cw-expand{position:absolute;right:20px;top:50%;transform:translateY(-50%);background:none;border:none;color:#72767d;font-size:18px;cursor:pointer;padding:4px;border-radius:4px}
+.cw-expand:hover{color:#dcddde;background:rgba(255,255,255,.08)}
+/* No more side panel */
 .cw-participants-side{display:none}
-.cw-side-title,.cw-side-user,.cw-side-av,.cw-side-name,.cw-side-spk{display:none}
 
 
 /* SETTINGS */
@@ -871,27 +865,28 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
 </div>
 
 
-<!-- CALL WINDOW -->
+<!-- CALL WINDOW — Discord style fullscreen overlay -->
 <div class="cw" id="callWindow">
-  <div class="cw-top" style="user-select:none">
-    <div style="flex:1;min-width:0">
-      <div class="cw-title" id="cwTitle">Голосовой звонок</div>
-      <div class="cw-subtitle" id="cwSubtitle">Подключение...</div>
-    </div>
-    <button onclick="toggleCWSize()" title="Скрыть" style="background:none;border:none;color:#72767d;font-size:20px;cursor:pointer;padding:0 4px;line-height:1;flex-shrink:0">×</button>
+  <div class="cw-top">
+    <div class="cw-title" id="cwTitle">Голосовой звонок</div>
+    <div class="cw-subtitle" id="cwSubtitle">Подключение...</div>
+    <button onclick="toggleCWSize()" class="cw-expand" title="Свернуть">⊠</button>
   </div>
-  <!-- Participants grid fills the space -->
   <div class="cw-body" id="cwBody"></div>
-  <!-- Controls always at bottom -->
   <div class="cw-bar">
-    <div class="cw-vol-wrap" title="Громкость">
-      <span style="font-size:13px;color:#72767d">🔊</span>
-      <input type="range" min="0" max="200" value="100" oninput="setVolume(this.value)" style="width:70px;accent-color:#5865f2">
-    </div>
-    <button class="cw-btn cw-screen-btn" id="cwScreenBtn" onclick="toggleScreenShare()" title="Демонстрация экрана">🖥</button>
-    <button class="cw-btn cw-mic" id="cwMicBtn" onclick="toggleMic()" title="Микрофон (M)">🎙</button>
-    <button class="cw-btn cw-deaf" id="cwDeafBtn" onclick="toggleDeaf()" title="Звук">🎧</button>
-    <button class="cw-btn cw-end" onclick="leaveVoice()" title="Завершить">📵</button>
+    <button class="cw-btn cw-mic" id="cwMicBtn" onclick="toggleMic()" title="Микрофон (M)">
+      <span class="cw-btn-icon">🎙</span><span class="cw-btn-label" id="cwMicLabel">Микрофон</span>
+    </button>
+    <button class="cw-btn cw-deaf" id="cwDeafBtn" onclick="toggleDeaf()" title="Звук">
+      <span class="cw-btn-icon">🎧</span><span class="cw-btn-label" id="cwDeafLabel">Звук</span>
+    </button>
+    <button class="cw-btn cw-screen-btn" id="cwScreenBtn" onclick="toggleScreenShare()" title="Демонстрация экрана">
+      <span class="cw-btn-icon">🖥</span><span class="cw-btn-label">Экран</span>
+    </button>
+    <button class="cw-btn" id="cwParticipantsBtn" onclick="toggleCWParticipants()" title="Участники" style="background:#404249;color:#fff">
+      <span class="cw-btn-icon">👥</span><span class="cw-btn-label" id="cwPartCount">Участники</span>
+    </button>
+    <button class="cw-btn cw-end" onclick="leaveVoice()" title="Завершить звонок">📵</button>
   </div>
 </div>
 
@@ -1551,12 +1546,14 @@ function startVoiceMsg(ctx, target){
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     voiceCtx={ctx,target};
     voiceChunks=[];
-    voiceRecorder=new MediaRecorder(stream,{mimeType:'audio/webm'});
+    const mimeType=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4',''].find(t=>!t||MediaRecorder.isTypeSupported(t))||'';
+    voiceRecorder=new MediaRecorder(stream, mimeType?{mimeType}:{});
+    const blobType=mimeType||'audio/webm';
     voiceRecorder.ondataavailable=e=>{if(e.data.size>0)voiceChunks.push(e.data);};
     voiceRecorder.onstop=()=>{
       const recDuration=Math.round((Date.now()-voiceStart)/1000);
       stream.getTracks().forEach(t=>t.stop());
-      const blob=new Blob(voiceChunks,{type:'audio/webm'});
+      const blob=new Blob(voiceChunks,{type:blobType});
       const reader=new FileReader();
       reader.onload=e=>{
         const dataUrl=e.target.result;
@@ -1570,7 +1567,7 @@ function startVoiceMsg(ctx, target){
             </div>
           </div>
           <span style="font-size:12px;color:var(--text2);flex-shrink:0">${dur}с</span>
-          <audio style="display:none"><source src="${dataUrl}" type="audio/webm"></audio>
+          <audio style="display:none"><source src="${dataUrl}" type="${blobType}"></audio>
         </div>`;
         const now=new Date();
         const time=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
@@ -2203,6 +2200,39 @@ window.toggleCWSize=function(){
   cw.classList.remove('vis');
 };
 
+window.toggleCWParticipants=function(){
+  // Toggle participants sidebar panel
+  let panel=document.getElementById('cwPartPanel');
+  if(panel){panel.remove();return;}
+  panel=document.createElement('div');
+  panel.id='cwPartPanel';
+  panel.style.cssText='position:absolute;right:0;top:48px;bottom:80px;width:220px;background:#111214;border-left:1px solid rgba(255,255,255,.07);overflow-y:auto;z-index:10;padding:12px';
+  const cw=document.getElementById('callWindow');
+  if(cw) cw.appendChild(panel);
+  _renderCWPartPanel();
+};
+
+function _renderCWPartPanel(){
+  const panel=document.getElementById('cwPartPanel');if(!panel)return;
+  const roomUsers=vcRooms[currentVoiceRoom]||{};
+  const all=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true},
+    ...Object.entries(roomUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
+  panel.innerHTML='<div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#72767d;margin-bottom:10px;font-weight:600">Участники — '+all.length+'</div>'+
+    all.map(u=>{
+      const isMic=u.isMe&&micMuted;
+      const spk=u.speaking&&!isMic;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;${spk?'background:rgba(35,165,90,.1)':''}margin-bottom:2px">
+        <div style="width:32px;height:32px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${spk?'box-shadow:0 0 0 2px #23a55a':''}">${u.init}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:${spk?'#23a55a':'#dcddde'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name)}${u.isMe?' (я)':''}</div>
+          ${isMic?'<div style="font-size:10px;color:#ed4245">🔇 Заглушён</div>':''}
+        </div>
+        ${spk?'<div style="width:8px;height:8px;border-radius:50%;background:#23a55a;flex-shrink:0"></div>':''}
+      </div>`;
+    }).join('');
+}
+
+
 function openCallWindow(title, subtitle){
   const cw=document.getElementById('callWindow');
   if(title) document.getElementById('cwTitle').textContent=title;
@@ -2219,6 +2249,11 @@ function updateCallWindow(){
     ...Object.entries(roomUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
   const count=allUsers.length;
 
+  // Update participants count badge
+  const pc=document.getElementById('cwPartCount');
+  if(pc) pc.textContent='Участники ('+count+')';
+  _renderCWPartPanel();
+
   // Collect active screens
   const activeScreens=[];
   if(screenSharing&&screenStream) activeScreens.push({uid:myUid,name:ME.name,isMe:true});
@@ -2228,61 +2263,61 @@ function updateCallWindow(){
   });
 
   if(activeScreens.length>0){
-    // Screen share mode: screen takes most space, participants in small strip at bottom
-    body.style.cssText='display:flex;flex-direction:column;gap:6px;align-items:stretch;padding:10px;';
+    // Screen share mode: big screen + small participant strip at bottom
+    body.style.cssText='display:flex;flex-direction:column;gap:6px;padding:12px;';
     const newIds=activeScreens.map(s=>s.uid).sort().join(',');
-    const oldIds=(body.dataset.screenIds||'');
-    if(newIds!==oldIds){
+    if((body.dataset.screenIds||'')!==newIds){
       body.dataset.screenIds=newIds;
-      const screenTiles=activeScreens.map(s=>`
-        <div style="flex:1;min-height:120px;position:relative;border:2px solid var(--accent);border-radius:10px;overflow:hidden;background:#000">
+      const tiles=activeScreens.map(s=>`
+        <div style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:10px;overflow:hidden;background:#000">
           ${s.isMe
-            ? `<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
-            : `<canvas id="scrcanvas_${s.uid}" style="width:100%;height:100%;object-fit:contain;display:block;background:#000"></canvas>`
-          }
-          <div style="position:absolute;bottom:6px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:2px 8px;font-size:10px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''} ${s.isMe?'<span id="screenFpsIndicator" style="color:#23a55a;font-size:9px"></span>':''}</div>
+            ?`<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
+            :`<canvas id="scrcanvas_${s.uid}" style="width:100%;height:100%;object-fit:contain;display:block;background:#000"></canvas>`}
+          <div style="position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,.7);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''} ${s.isMe?'<span id="screenFpsIndicator" style="color:#23a55a;font-size:10px"></span>':''}</div>
         </div>`).join('');
-      const strip=`<div id="cwStrip" style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;padding:4px 0"></div>`;
-      body.innerHTML=screenTiles+strip;
-      const ownVid=document.getElementById('scrvid_'+myUid);
-      if(ownVid&&screenStream){ownVid.srcObject=screenStream;ownVid.play().catch(()=>{});}
+      body.innerHTML=tiles+'<div id="cwStrip" style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap"></div>';
+      const v=document.getElementById('scrvid_'+myUid);
+      if(v&&screenStream){v.srcObject=screenStream;v.play().catch(()=>{});}
     }
     const strip=document.getElementById('cwStrip');
-    if(strip){
-      strip.innerHTML=allUsers.map(u=>{
-        const isMic=u.isMe&&micMuted;
-        return `<div style="width:80px;height:56px;flex-shrink:0;border:2px solid ${u.speaking&&!isMic?'#23a55a':'transparent'};border-radius:8px;overflow:hidden;background:#1a1d27;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
-          <div style="width:26px;height:26px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${u.init}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:72px;text-align:center">${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?' 🔇':''}</div>
-        </div>`;
-      }).join('');
-    }
+    if(strip) strip.innerHTML=allUsers.map(u=>{
+      const isMic=u.isMe&&micMuted;const spk=u.speaking&&!isMic;
+      return `<div style="width:86px;height:60px;flex-shrink:0;border:2px solid ${spk?'#23a55a':'transparent'};border-radius:8px;background:#2b2d31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+        <div style="width:28px;height:28px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;${spk?'box-shadow:0 0 0 2px #23a55a':''}">${u.init}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.75);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px;text-align:center">${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?' 🔇':''}</div>
+      </div>`;
+    }).join('');
 
   } else {
-    // Normal mode: participant grid, Discord style
-    body.style.cssText='';
+    // Normal mode — Discord adaptive grid
     body.dataset.screenIds='';
-    // Grid cols: 1 person = centered solo, 2 = 2 col, 3-4 = 2 col, 5+ = 2 col scroll
-    const gridStyle=count===1?'grid-template-columns:1fr':'grid-template-columns:1fr 1fr';
-    body.style.cssText=`display:grid;${gridStyle};gap:6px;padding:10px;overflow-y:auto;align-content:start;`;
+    // Calculate optimal grid: 1→1col, 2→2col, 3-4→2col, 5-6→3col, 7+→3col
+    const cols=count<=1?1:count<=4?2:3;
+    const avSize=count<=1?120:count<=4?80:64;
+    const fontSize=count<=1?36:count<=4?28:22;
+    body.style.cssText=`display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px;padding:12px;align-content:center;justify-content:center;`;
     body.innerHTML=allUsers.map(u=>{
-      const isMic=u.isMe&&micMuted;
-      const spk=u.speaking&&!isMic;
-      const sz=count===1?'solo':count===2?'big':'small';
-      return `<div class="cw-participant ${sz}${spk?' spk':''}">
-        <div class="cw-av" style="background:${u.color}">${u.init}</div>
-        <div class="cw-name">${u.isMe?'🎙 ':''}${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?' 🔇':''}</div>
+      const isMic=u.isMe&&micMuted;const spk=u.speaking&&!isMic;
+      return `<div class="cw-participant${spk?' spk':''}" style="aspect-ratio:16/10;min-height:80px">
+        <div class="cw-av" style="background:${u.color};width:${avSize}px;height:${avSize}px;font-size:${fontSize}px;${spk?'box-shadow:0 0 0 3px rgba(35,165,90,.7)':''}">${u.init}</div>
+        <div class="cw-name" style="margin-top:8px">${u.isMe?'🎙 ':''}${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?' 🔇':''}</div>
       </div>`;
     }).join('');
   }
 
-  // Update mic/deaf/screen button states
+  // Sync button states
   const mb=document.getElementById('cwMicBtn');
   const db=document.getElementById('cwDeafBtn');
   const sb=document.getElementById('cwScreenBtn');
-  if(mb){mb.classList.toggle('off',micMuted);mb.textContent=micMuted?'🔇':'🎙';}
-  if(db){db.classList.toggle('off',deafMuted);db.textContent=deafMuted?'🔕':'🎧';}
-  if(sb){sb.classList.toggle('on',screenSharing);sb.textContent=screenSharing?'🖥':'🖥';}
+  const ml=document.getElementById('cwMicLabel');
+  const dl=document.getElementById('cwDeafLabel');
+  if(mb) mb.classList.toggle('off',micMuted);
+  if(ml) ml.textContent=micMuted?'Мут':'Микрофон';
+  const micIcon=mb?.querySelector('.cw-btn-icon');if(micIcon)micIcon.textContent=micMuted?'🔇':'🎙';
+  if(db) db.classList.toggle('off',deafMuted);
+  if(dl) dl.textContent=deafMuted?'Глушение':'Звук';
+  const deafIcon=db?.querySelector('.cw-btn-icon');if(deafIcon)deafIcon.textContent=deafMuted?'🔕':'🎧';
+  if(sb) sb.classList.toggle('on',screenSharing);
 }
 window.leaveVoice=async function(){
   if(!inVoice)return;
