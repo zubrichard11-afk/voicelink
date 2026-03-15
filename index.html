@@ -339,6 +339,28 @@ input,textarea{font-family:var(--font)}
 .s-nav-item.act{background:#404249;color:#fff}
 .s-nav-sep{height:1px;background:rgba(255,255,255,.06);margin:8px 4px}
 .s-nav-danger{color:#ed4245 !important}
+/* Context menu */
+.ctx-item{padding:7px 12px;border-radius:4px;font-size:13px;color:#dcddde;cursor:pointer;transition:background .1s;white-space:nowrap}
+.ctx-item:hover{background:var(--accent)}
+.ctx-danger{color:#ed4245}
+.ctx-danger:hover{background:#ed4245;color:#fff}
+.ctx-sep{height:1px;background:rgba(255,255,255,.06);margin:4px 0}
+/* Improved channel hover with actions */
+.ch-item:hover .ch-acts{opacity:1}
+.ch-acts{display:flex;gap:2px;margin-left:auto;opacity:0;transition:opacity .1s}
+.ch-act{width:20px;height:20px;border-radius:3px;border:none;background:transparent;color:var(--text2);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ch-act:hover{background:rgba(255,255,255,.1);color:#fff}
+/* Message improvements */
+.msg-g{padding:4px 16px 2px;position:relative}
+.msg-g+.msg-g{padding-top:2px}
+.msg-g:hover{background:rgba(255,255,255,.015);border-radius:4px}
+.msg-g .msg-av{transition:transform .1s}
+.msg-g:hover .msg-av{transform:scale(1.05)}
+/* Online indicator in DM header */
+.dm-online-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-left:6px;vertical-align:middle}
+/* Server icon tooltip */
+.ri[title]:hover::after{content:attr(title);position:absolute;left:64px;background:#18191c;color:#fff;padding:5px 10px;border-radius:6px;font-size:12px;white-space:nowrap;pointer-events:none;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.ri{position:relative}
 .s-accent-opt{width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform .15s,border-color .15s;flex-shrink:0}
 .s-accent-opt:hover{transform:scale(1.15)}
 .s-accent-opt.act{border-color:#fff}
@@ -428,12 +450,11 @@ input,textarea{font-family:var(--font)}
 
 <div class="app" id="appRoot" style="display:none">
 <div class="rail" id="rail">
-  <button class="ri act" id="railDM" onclick="switchMode('dm')">💬</button>
+  <button class="ri act" id="railDM" onclick="switchMode('dm')" title="Личные сообщения">💬</button>
   <div class="rail-sep"></div>
-  <button class="ri" id="railSrv1" onclick="switchMode('server','🎮','VoiceLink HQ')">🎮</button>
-  <button class="ri" onclick="switchMode('server','⚡','Dev Squad')">⚡</button>
+  <div id="railServers"></div>
   <div class="rail-sep"></div>
-  <button class="rail-add" onclick="openModal('createSrvModal')">+</button>
+  <button class="rail-add" onclick="openModal('createSrvModal')" title="Создать сервер">+</button>
 </div>
 <div class="sidebar">
   <div id="dmSidebar" style="display:flex;flex-direction:column;height:100%;overflow:hidden">
@@ -534,10 +555,19 @@ input,textarea{font-family:var(--font)}
   </div>
 </div>
 <div class="modal-bg" id="createSrvModal">
-  <div class="modal">
+  <div class="modal" style="width:440px">
     <div class="modal-title">Создать сервер</div>
-    <div class="modal-lbl">Название</div>
-    <input class="modal-inp" id="srvNameInp" value="Мой сервер">
+    <div style="text-align:center;margin-bottom:16px">
+      <div id="srvIconPreview" onclick="document.getElementById('srvIconPicker').click()" style="width:72px;height:72px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;cursor:pointer;margin:0 auto 8px;border:3px dashed rgba(255,255,255,.2);transition:border-color .2s" title="Нажми чтобы выбрать эмодзи">🎮</div>
+      <div style="font-size:11px;color:#72767d">Нажми чтобы выбрать иконку</div>
+      <div id="srvIconPicker" style="display:none;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px;max-width:320px;margin-left:auto;margin-right:auto">
+        ${['🎮','⚡','🎵','💻','🏆','🔥','🌙','🚀','🎯','🎨','🏋️','☕','🌍','🎲','👾','🤝'].map(e=>`<span onclick="pickSrvIcon('${e}')" style="font-size:24px;cursor:pointer;padding:4px;border-radius:6px;transition:background .1s" onmouseover="this.style.background='rgba(255,255,255,.1)'" onmouseout="this.style.background=''">${e}</span>`).join('')}
+      </div>
+    </div>
+    <div class="modal-lbl">Название сервера</div>
+    <input class="modal-inp" id="srvNameInp" placeholder="Мой сервер" maxlength="32">
+    <div class="modal-lbl" style="margin-top:12px">Описание <span style="color:#72767d;font-size:10px">(необязательно)</span></div>
+    <input class="modal-inp" id="srvDescInp" placeholder="О чём этот сервер?" maxlength="64">
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('createSrvModal')">Отмена</button>
       <button class="btn-ok" onclick="createSrv()">Создать</button>
@@ -679,8 +709,8 @@ const rtcScreenVideos=new Map();
 // Screen share relay via WebSocket (canvas JPEG frames)
 // No WebRTC/TURN needed — works everywhere including Railway
 let screenRelayTimer=null;
-const SCREEN_FPS=60;
-const SCREEN_QUALITY=0.8;
+const SCREEN_FPS=24; // реально достижимо через WS JPEG relay
+const SCREEN_QUALITY=0.7;
 const SCREEN_MAX_W=1280; // 1920→1280 gives 2x smaller JPEG, easier to hit 60fps
 let cwMinimized=false;
 let inVoice=false,currentVoiceRoom='';
@@ -788,12 +818,13 @@ function handleWS(d){
       break;
     case 'user_leave': delete onlineUsers[d.uid];renderDMList();renderVCUsers();break;
     case 'user_update':
-      if(onlineUsers[d.uid]){onlineUsers[d.uid].status=d.status;onlineUsers[d.uid].activity=d.activity;}
-      renderDMList();break;
-    case 'chat':
-      if(!srvMsgs[d.channel])srvMsgs[d.channel]=[];
-      srvMsgs[d.channel].push(d.msg);
-      if(currentView==='srv:'+d.channel)appendMsg(d.msg,d.channel);
+      if(onlineUsers[d.uid]){onlineUsers[d.uid].status=d.status;onlineUsers[d.uid].activity=d.activity||'';}
+      renderDMList();
+      // Live update DM header status dot
+      const dotEl=document.getElementById('dmHeaderDot_'+d.uid);
+      const statEl=document.getElementById('dmHeaderStatus_'+d.uid);
+      if(dotEl) dotEl.className='st-dot st-dot-sm '+(d.status||'offline');
+      if(statEl) statEl.textContent=statusLabel(d.status);
       break;
     case 'dm':
       if(!dmConvs[d.from])dmConvs[d.from]=[];
@@ -858,7 +889,7 @@ function handleWS(d){
 async function startMicRelay(){
   try{
     micStream=await navigator.mediaDevices.getUserMedia({audio:{
-      channelCount:1,
+      sampleRate:SAMPLE_RATE,channelCount:1,
       echoCancellation:true,
       noiseSuppression:true,
       autoGainControl:true
@@ -867,12 +898,13 @@ async function startMicRelay(){
     toast('Микрофон','🎙','Нет доступа к микрофону: '+e.message,'error');
     return false;
   }
-  audioCtx=new AudioContext({sampleRate:48000,latencyHint:'interactive'});
+  audioCtx=new AudioContext({sampleRate:SAMPLE_RATE,latencyHint:'interactive'});
   if(audioCtx.state==='suspended') await audioCtx.resume();
   const src=audioCtx.createMediaStreamSource(micStream);
   micProcessor=audioCtx.createScriptProcessor(CHUNK_SAMPLES,1,1);
   src.connect(micProcessor);
-  // GainNode с 0 — нужен чтобы ScriptProcessor работал, но мы себя не слышим
+  // ScriptProcessor нужен destination чтобы работать,
+  // но gain=0 чтобы не слышать себя в наушниках
   const silentOut=audioCtx.createGain();
   silentOut.gain.value=0;
   micProcessor.connect(silentOut);
@@ -885,18 +917,12 @@ async function startMicRelay(){
     const f32=e.inputBuffer.getChannelData(0);
     // VAD
     const vol=f32.reduce((a,b)=>a+Math.abs(b),0)/f32.length;
-    const spk=vol>0.008;
+    const spk=vol>0.01;
     // Convert to Int16 and send
     const i16=new Int16Array(f32.length);
     for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
     wsSendBinary(i16.buffer);
-    // Adaptive bitrate: 1/3 frames when silent
-    if(adaptiveBitrate&&!spk){
-      if(!window._abSkip) window._abSkip=0;
-      window._abSkip++;
-      if(window._abSkip%3!==0) return;
-    } else { window._abSkip=0; }
-    // Speaking indicator
+    // Speaking indicator — only on change
     const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking);
     if(spk!==prevSpk){
       wsSend({type:'speaking',speaking:spk});
@@ -1016,6 +1042,9 @@ function launchApp(){
   document.getElementById('myNameSrv').textContent=ME.name;
   showFriends();
   setInterval(()=>{if(inVoice){const el=document.getElementById('vbarPing');if(el)el.textContent=(20+Math.floor(Math.random()*30))+'ms';}},3000);
+
+  // Init servers
+  if(servers.size===0) initDefaultServers();
 }
 
 // ══════════════════════════════════════
@@ -1052,12 +1081,17 @@ window.openDM=function(uid){
   document.getElementById('mainArea').innerHTML=`
   <div class="friends-wrap">
     <div class="chat-head">
-      <div class="av" style="flex-shrink:0"><div class="av-img av-32" style="background:${u.color};cursor:pointer" onclick="openPP('${uid}',this)">${u.init}</div><div class="st-dot st-dot-sm ${u.status||'offline'}"></div></div>
-      <span class="head-name" style="cursor:pointer" onclick="openPP('${uid}',this)">${esc(u.name)}</span>
-      <div class="head-sep"></div><span class="head-desc">${statusLabel(u.status)}</span>
-      <div class="head-acts">
-        <button class="hb" onclick="startCall('${uid}')" title="Позвонить">📞</button>
-        <button class="hb" onclick="openPP('${uid}',this)">🙂</button>
+      <div class="av" style="flex-shrink:0;cursor:pointer" onclick="openPP('${uid}',this)">
+        <div class="av-img av-32" style="background:${u.color}">${u.init}</div>
+        <div class="st-dot st-dot-sm ${u.status||'offline'}" id="dmHeaderDot_${uid}"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;justify-content:center;cursor:pointer;min-width:0" onclick="openPP('${uid}',this)">
+        <span class="head-name" style="line-height:1.2">${esc(u.name)}${roleBadge(u.role||'')}</span>
+        <span style="font-size:11px;color:var(--text2);line-height:1.2" id="dmHeaderStatus_${uid}">${statusLabel(u.status)}</span>
+      </div>
+      <div class="head-acts" style="margin-left:auto">
+        <button class="hb" onclick="startCall('${uid}')" title="Голосовой звонок">📞</button>
+        <button class="hb" onclick="openPP('${uid}',this)" title="Профиль">👤</button>
       </div>
     </div>
     <div class="msgs" id="dmMsgs"></div>
@@ -1083,6 +1117,17 @@ function renderDMMsgs(uid){
   el.innerHTML=html;el.scrollTop=el.scrollHeight;
 }
 
+// Format message text: bold, italic, code, links
+function formatMsgText(txt){
+  if(!txt) return '';
+  let s=esc(txt);
+  s=s.replace(/`([^`]+)`/g,'<code>$1</code>');
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  s=s.replace(/\*([^*]+)\*/g,'<em>$1</em>');
+  s=s.replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">$1</a>');
+  return s;
+}
+
 window.sendDM=function(uid){
   const inp=document.getElementById('dmInp');if(!inp)return;
   const val=inp.value.trim();if(!val)return;
@@ -1105,9 +1150,13 @@ window.openSrvCh=function(btn,ch,desc){
   document.getElementById('mainArea').innerHTML=`
   <div class="friends-wrap">
     <div class="chat-head">
-      <span class="head-icon">#</span><span class="head-name">${ch}</span>
-      <div class="head-sep"></div><span class="head-desc">${esc(desc)}</span>
-      <div class="head-acts"><button class="hb" onclick="openModal('inviteModal2')">🔗</button></div>
+      <span class="head-icon" style="color:var(--text2);font-size:19px">#</span>
+      <span class="head-name">${ch}</span>
+      ${desc?`<div class="head-sep"></div><span class="head-desc">${esc(desc)}</span>`:''}
+      <div class="head-acts" style="margin-left:auto;display:flex;gap:2px">
+        <button class="hb" onclick="openModal('inviteModal2')" title="Пригласить">🔗</button>
+        <button class="hb" title="Участники" style="font-size:13px" id="membersToggle" onclick="toggleMemberList()">👥 <span id="memberCount" style="font-size:11px">${Object.keys(onlineUsers).length+1}</span></button>
+      </div>
     </div>
     <div class="msgs" id="srvMsgs"></div>
     <div class="typing-wrap" id="srvTyping"></div>
@@ -1157,17 +1206,23 @@ function renderMsg(m){
   const color=m.fromColor||(isMe?ME.color:'#747f8d');
   const init=m.fromInit||(isMe?ME.init:'?');
   const name=m.fromName||(isMe?ME.name:getUser(m.from).name);
+  const role=m.fromRole||getUser(m.from).role||'';
+  const nameColor=roleColor(role)||color;
   return `<div class="msg-g">
     <div class="msg-av" style="background:${color};cursor:pointer" onclick="openPP('${m.from}',this)">${init}</div>
     <div class="msg-body">
-      <div class="msg-meta"><span class="msg-author" style="color:${color}">${esc(name)}</span><span class="msg-time">${m.time||''}</span></div>
-      <div class="msg-txt">${m.text||''}</div>
+      <div class="msg-meta">
+        <span class="msg-author" style="color:${nameColor};cursor:pointer" onclick="openPP('${m.from}',this)">${esc(name)}</span>
+        ${roleBadge(role)}
+        <span class="msg-time">${m.time||''}</span>
+      </div>
+      <div class="msg-txt">${formatMsgText(m.text||'')}</div>
       ${m.cmd?`<div class="cmd-res">${esc(m.cmd)}</div>`:''}
     </div>
     <div class="msg-acts">
-      <button class="ma-btn" onclick="quickReact(this)">😊</button>
-      <button class="ma-btn">↩</button>
-      ${isMe?`<button class="ma-btn" style="color:var(--red)" onclick="this.closest('.msg-g').remove()">🗑</button>`:''}
+      <button class="ma-btn" onclick="quickReact(this)" title="Реакция">😊</button>
+      <button class="ma-btn" title="Ответить">↩</button>
+      ${isMe?`<button class="ma-btn" style="color:var(--red)" onclick="this.closest('.msg-g').remove()" title="Удалить">🗑</button>`:''}
     </div>
   </div>`;
 }
@@ -1864,20 +1919,15 @@ window.toggleScreen=function(){
 // ══════════════════════════════════════
 // MODE SWITCH
 // ══════════════════════════════════════
-window.switchMode=function(mode,icon,name){
+window.switchMode=function(mode){
   currentMode=mode;
-  document.querySelectorAll('.ri').forEach(x=>x.classList.remove('act'));
   if(mode==='dm'){
+    currentServerId=null;
+    document.querySelectorAll('.ri').forEach(x=>x.classList.remove('act'));
     document.getElementById('railDM').classList.add('act');
     document.getElementById('dmSidebar').style.display='flex';
     document.getElementById('srvSidebar').style.display='none';
     showFriends();
-  }else{
-    event.currentTarget.classList.add('act');
-    document.getElementById('dmSidebar').style.display='none';
-    document.getElementById('srvSidebar').style.display='flex';
-    document.getElementById('srvSbName').textContent=name||'Сервер';
-    openSrvCh(document.getElementById('chGeneral'),'general','Основной чат');
   }
 };
 
@@ -1909,53 +1959,248 @@ window.ppFriend=()=>{if(!ppTarget)return;if(friends.has(ppTarget)){removeFriend(
 // ══════════════════════════════════════
 // CREATE SERVER
 // ══════════════════════════════════════
-window.addChannel=function(type){
-  const name=prompt(type==='voice'?'Название голосового канала:':'Название текстового канала:','')?.trim();
-  if(!name) return;
-  if(type==='voice'){
-    const list=document.getElementById('voiceChannelList');
-    if(!list) return;
-    const btn=document.createElement('button');
-    btn.className='ch-item vc-item';
-    btn.dataset.room=name;
-    btn.onclick=()=>joinVoice(name);
-    btn.innerHTML=`<div class="vc-row"><span class="ch-icon">🔊</span><span class="ch-name">${esc(name)}</span><span class="vc-count" style="font-size:10px;color:var(--text2);margin-left:auto"> </span></div><div class="vc-users"></div>`;
-    list.appendChild(btn);
-    toast('Канал','🔊','Канал #'+name+' создан','success');
-  } else {
-    // Text channel
-    const list=document.getElementById('textChannelList');
-    if(!list) return;
-    const id='ch_'+name.toLowerCase().replace(/\s+/g,'_');
-    // Register in server messages
-    if(!srvMsgs[id]) srvMsgs[id]=[];
-    const btn=document.createElement('button');
-    btn.className='ch-item';
-    btn.onclick=function(){openSrvCh(this,id,name);};
-    btn.innerHTML=`<span class="ch-icon">#</span><span class="ch-name">${esc(name)}</span>`;
-    list.appendChild(btn);
-    toast('Канал','#','Канал #'+name+' создан','success');
+// ══════════════════════════════════════
+// SERVER SYSTEM
+// ══════════════════════════════════════
+// servers: Map<id, {id,name,icon,desc,textChannels:[{id,name}],voiceChannels:[{id,name}]}>
+const servers = new Map();
+let currentServerId = null;
+
+function makeServerId(){ return 'srv_'+Date.now()+'_'+Math.random().toString(36).slice(2,6); }
+function makeChanId(name){ return name.toLowerCase().replace(/[^a-zа-яё0-9]/gi,'_').replace(/__+/g,'_'); }
+
+function initDefaultServers(){
+  const s1 = {
+    id:'srv_default', name:'VoiceLink HQ', icon:'🎮', desc:'Основной сервер',
+    textChannels:[{id:'general',name:'general'},{id:'gaming',name:'gaming'},{id:'dev',name:'dev'}],
+    voiceChannels:[{id:'Gaming Lounge',name:'Gaming Lounge'},{id:'Chill Zone',name:'Chill Zone'}]
+  };
+  servers.set(s1.id, s1);
+  renderRail();
+  switchToServer(s1.id);
+}
+
+function renderRail(){
+  const el = document.getElementById('railServers');
+  if(!el) return;
+  el.innerHTML = '';
+  servers.forEach((srv,id)=>{
+    const btn = document.createElement('button');
+    btn.className = 'ri' + (id===currentServerId?' act':'');
+    btn.textContent = srv.icon||srv.name[0].toUpperCase();
+    btn.title = srv.name;
+    btn.dataset.srvId = id;
+    btn.onclick = ()=>switchToServer(id);
+    btn.oncontextmenu = e=>{e.preventDefault();showServerCtx(id,e);};
+    el.appendChild(btn);
+  });
+}
+
+function switchToServer(id){
+  const srv = servers.get(id);
+  if(!srv) return;
+  currentServerId = id;
+  currentMode = 'server';
+  renderRail();
+  document.getElementById('railDM').classList.remove('act');
+  document.getElementById('dmSidebar').style.display = 'none';
+  document.getElementById('srvSidebar').style.display = 'flex';
+  document.getElementById('srvSbName').textContent = srv.name;
+  renderServerSidebar(srv);
+  // Open first text channel
+  if(srv.textChannels.length > 0){
+    const ch = srv.textChannels[0];
+    const btn = document.querySelector(`.ch-item[data-chid="${ch.id}"]`);
+    openSrvCh(btn||document.createElement('button'), ch.id, ch.name);
   }
+}
+
+function renderServerSidebar(srv){
+  const textList = document.getElementById('textChannelList');
+  const voiceList = document.getElementById('voiceChannelList');
+  if(!textList||!voiceList) return;
+
+  // Text channels
+  textList.innerHTML = srv.textChannels.map(ch=>`
+    <button class="ch-item" data-chid="${ch.id}"
+      onclick="openSrvCh(this,'${ch.id}','${esc(ch.name)}')"
+      oncontextmenu="showChanCtx(event,'text','${ch.id}','${esc(ch.name)}','${srv.id}')">
+      <span class="ch-icon">#</span>
+      <span class="ch-name">${esc(ch.name)}</span>
+    </button>`).join('');
+
+  // Voice channels
+  voiceList.innerHTML = srv.voiceChannels.map(ch=>`
+    <button class="ch-item vc-item" data-room="${ch.id}"
+      onclick="joinVoice('${ch.id}')"
+      oncontextmenu="showChanCtx(event,'voice','${ch.id}','${esc(ch.name)}','${srv.id}')">
+      <div class="vc-row">
+        <span class="ch-icon">🔊</span>
+        <span class="ch-name">${esc(ch.name)}</span>
+        <span class="vc-count" style="font-size:10px;color:var(--text2);margin-left:auto"></span>
+      </div>
+      <div class="vc-users"></div>
+    </button>`).join('');
+}
+
+// ── Channel context menu ──
+function showChanCtx(e, type, chId, chName, srvId){
+  e.preventDefault();
+  removeCtxMenu();
+  const menu = document.createElement('div');
+  menu.id = 'ctxMenu';
+  menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;background:#18191c;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:4px;z-index:9999;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.6);font-family:'JetBrains Mono',monospace`;
+  menu.innerHTML = `
+    <div class="ctx-item" onclick="renameChan('${type}','${chId}','${chName}','${srvId}')">✏️ Переименовать</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item ctx-danger" onclick="deleteChan('${type}','${chId}','${srvId}')">🗑️ Удалить канал</div>`;
+  document.body.appendChild(menu);
+  setTimeout(()=>document.addEventListener('click',removeCtxMenu,{once:true}),10);
+}
+
+function showServerCtx(srvId, e){
+  removeCtxMenu();
+  const srv = servers.get(srvId);
+  if(!srv) return;
+  const menu = document.createElement('div');
+  menu.id = 'ctxMenu';
+  menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY+8}px;background:#18191c;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:4px;z-index:9999;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.6);font-family:'JetBrains Mono',monospace`;
+  menu.innerHTML = `
+    <div style="padding:8px 10px;font-size:12px;font-weight:700;color:#dcddde;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:4px">${esc(srv.name)}</div>
+    <div class="ctx-item" onclick="renameServer('${srvId}')">✏️ Переименовать сервер</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item ctx-danger" onclick="deleteServer('${srvId}')">🗑️ Удалить сервер</div>`;
+  document.body.appendChild(menu);
+  setTimeout(()=>document.addEventListener('click',removeCtxMenu,{once:true}),10);
+}
+
+function removeCtxMenu(){
+  document.getElementById('ctxMenu')?.remove();
+}
+
+window.renameChan=function(type,chId,chName,srvId){
+  removeCtxMenu();
+  const srv=servers.get(srvId);if(!srv)return;
+  showInlineRename(chName, newName=>{
+    if(!newName) return;
+    const list = type==='text'?srv.textChannels:srv.voiceChannels;
+    const ch = list.find(c=>c.id===chId);
+    if(ch){ ch.name=newName; renderServerSidebar(srv); }
+    toast('Канал','✏️','Переименован','success');
+  });
+};
+
+window.deleteChan=function(type,chId,srvId){
+  removeCtxMenu();
+  const srv=servers.get(srvId);if(!srv)return;
+  const list = type==='text'?srv.textChannels:srv.voiceChannels;
+  const idx = list.findIndex(c=>c.id===chId);
+  if(idx===-1) return;
+  if(list.length<=1){toast('Ошибка','⚠️','Нельзя удалить последний канал','error');return;}
+  list.splice(idx,1);
+  renderServerSidebar(srv);
+  // If we were in this channel, go to first available
+  if(currentSrvCh===chId && srv.textChannels.length>0){
+    const first=srv.textChannels[0];
+    openSrvCh(document.createElement('button'),first.id,first.name);
+  }
+  toast('Канал','🗑️','Удалён','info');
+};
+
+window.renameServer=function(srvId){
+  removeCtxMenu();
+  const srv=servers.get(srvId);if(!srv)return;
+  showInlineRename(srv.name, newName=>{
+    if(!newName)return;
+    srv.name=newName;
+    renderRail();
+    document.getElementById('srvSbName').textContent=newName;
+    toast('Сервер','✏️','Переименован','success');
+  });
+};
+
+window.deleteServer=function(srvId){
+  removeCtxMenu();
+  if(servers.size<=1){toast('Ошибка','⚠️','Нельзя удалить последний сервер','error');return;}
+  servers.delete(srvId);
+  renderRail();
+  const first=servers.keys().next().value;
+  switchToServer(first);
+  toast('Сервер','🗑️','Удалён','info');
+};
+
+// Inline rename popup
+function showInlineRename(current, callback){
+  removeCtxMenu();
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9998;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML=`<div style="background:#1e2030;border-radius:10px;padding:20px;width:320px;font-family:'JetBrains Mono',monospace">
+    <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:12px">Переименовать</div>
+    <input id="renameInp" value="${esc(current)}" style="width:100%;background:#111217;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:8px 12px;color:#fff;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box" maxlength="32">
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button onclick="this.closest('div[style]').parentElement.remove()" style="padding:7px 14px;background:#4f545c;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;font-family:inherit">Отмена</button>
+      <button id="renameOk" style="padding:7px 14px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700">Сохранить</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const inp=document.getElementById('renameInp');
+  inp.focus();inp.select();
+  document.getElementById('renameOk').onclick=()=>{
+    callback(inp.value.trim());
+    overlay.remove();
+  };
+  inp.onkeydown=e=>{if(e.key==='Enter'){callback(inp.value.trim());overlay.remove();}if(e.key==='Escape')overlay.remove();};
+}
+
+// ── Add channel inline (no prompt) ──
+window.addChannel=function(type){
+  const srv = servers.get(currentServerId);
+  if(!srv) return;
+  showInlineRename(type==='voice'?'Новый канал':'новый-канал', name=>{
+    if(!name) return;
+    const id = makeChanId(name);
+    if(type==='voice'){
+      srv.voiceChannels.push({id:name,name});
+      renderServerSidebar(srv);
+      toast('Канал','🔊',name+' создан','success');
+    } else {
+      if(srv.textChannels.find(c=>c.id===id)){toast('Ошибка','⚠️','Такой канал уже есть','error');return;}
+      srv.textChannels.push({id,name});
+      if(!srvMsgs[id]) srvMsgs[id]=[];
+      renderServerSidebar(srv);
+      toast('Канал','#',name+' создан','success');
+    }
+  });
+};
+
+// ── Create server ──
+window.pickSrvIcon=function(emoji){
+  document.getElementById('srvIconPreview').textContent=emoji;
+  document.getElementById('srvIconPicker').style.display='none';
+  document.getElementById('srvIconPreview').dataset.icon=emoji;
 };
 
 window.createSrv=function(){
-  const name=document.getElementById('srvNameInp').value.trim()||'Мой сервер';
+  const name=(document.getElementById('srvNameInp').value||'').trim()||'Мой сервер';
+  const icon=document.getElementById('srvIconPreview').dataset.icon||document.getElementById('srvIconPreview').textContent||'🎮';
+  const desc=(document.getElementById('srvDescInp').value||'').trim();
   closeModal('createSrvModal');
-  const rail=document.getElementById('rail');
-  const btn=document.createElement('button');
-  btn.className='ri';
-  btn.textContent=name[0].toUpperCase();
-  btn.title=name;
-  btn.style.fontSize='14px';
-  btn.style.fontWeight='700';
-  const srvId='srv_'+Date.now();
-  btn.onclick=()=>switchMode('server',name[0].toUpperCase(),name,srvId);
-  // Insert before the + button
-  const addBtn=rail.querySelector('.rail-add');
-  rail.insertBefore(btn,addBtn);
-  switchMode('server',name[0].toUpperCase(),name,srvId);
-  toast('Сервер','🎮','Сервер «'+name+'» создан','success');
-};;
+  const id=makeServerId();
+  const srv={id,name,icon,desc,
+    textChannels:[{id:'general',name:'general'}],
+    voiceChannels:[{id:'Общий',name:'Общий'}]
+  };
+  servers.set(id,srv);
+  if(!srvMsgs['general']) srvMsgs['general']=[];
+  renderRail();
+  switchToServer(id);
+  toast('Сервер','🎮','«'+name+'» создан','success');
+  // Reset modal
+  document.getElementById('srvNameInp').value='';
+  document.getElementById('srvDescInp').value='';
+  document.getElementById('srvIconPreview').textContent='🎮';
+  document.getElementById('srvIconPreview').dataset.icon='🎮';
+};;;
 
 // ══════════════════════════════════════
 // UTILS
@@ -2915,6 +3160,41 @@ window.setUserRole=function(uid,role){
 window.kickUser=function(uid){
   if(myRole!=='admin'&&myRole!=='mod'){toast('Кик','⚠️','Нет прав','error');return;}
   if(confirm('Кикнуть '+getUser(uid).name+'?')) wsSend({type:'kick',uid});
+};
+
+// ── Member list toggle ──
+window.toggleMemberList=function(){
+  const wrap=document.getElementById('memberListWrap');
+  if(wrap){wrap.remove();return;}
+  const main=document.getElementById('mainArea');
+  if(!main)return;
+  const fw=main.querySelector('.friends-wrap');
+  if(!fw)return;
+  fw.style.display='flex';fw.style.flexDirection='row';
+  const ml=document.createElement('div');
+  ml.id='memberListWrap';
+  ml.style.cssText='width:220px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;padding:16px 8px';
+  const allUsers=[{uid:myUid,...ME,status:'online',role:myRole,isMe:true},...Object.entries(onlineUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
+  const online=allUsers.filter(u=>u.status!=='offline'&&u.status!=='invisible');
+  const offline=allUsers.filter(u=>u.status==='offline'||u.status==='invisible');
+  ml.innerHTML=`
+    <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text2);text-transform:uppercase;padding:0 8px;margin-bottom:8px">В сети — ${online.length}</div>
+    ${online.map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .1s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      <div style="position:relative;flex-shrink:0">
+        <div style="width:32px;height:32px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${u.init}</div>
+        <div style="position:absolute;bottom:-1px;right:-1px;width:11px;height:11px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></div>
+      </div>
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;color:${roleColor(u.role||'')||'var(--text0)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name||'?')}${u.isMe?' (я)':''}</div>
+        ${u.activity?`<div style="font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.activity)}</div>`:''}
+      </div>
+    </div>`).join('')}
+    ${offline.length?`<div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text2);text-transform:uppercase;padding:0 8px;margin:12px 0 8px">Не в сети — ${offline.length}</div>
+    ${offline.map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;opacity:.5">
+      <div style="width:32px;height:32px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${u.init}</div>
+      <div style="font-size:13px;color:var(--text1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name||'?')}</div>
+    </div>`).join('')}`:''}`;
+  fw.appendChild(ml);
 };
 
 // ── Message history export ──
