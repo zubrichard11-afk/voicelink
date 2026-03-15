@@ -923,7 +923,12 @@ async function startMicRelay(){
       scheduleUI(()=>{renderVCUsers();updateVCBar();updateWidget();});
     }
   };
-  micProcessor.connect(audioCtx.destination);
+  // ScriptProcessor требует подключения к destination чтобы работать,
+  // но нам не нужно слышать себя — подключаем через gain=0
+  const silentGain=audioCtx.createGain();
+  silentGain.gain.value=0;
+  micProcessor.connect(silentGain);
+  silentGain.connect(audioCtx.destination);
   return true;
 }
 
@@ -1438,156 +1443,130 @@ function startScreenRelay(){
   video.playsInline=true;
   video.play();
 
-  const hdrBytes=new TextEncoder().encode(
-    JSON.stringify({type:'screen_frame',from:myUid,name:ME.name})+'\n'
-  );
+  // Header bytes — built once, reused every frame
+  const hdrStr=JSON.stringify({type:'screen_frame',from:myUid,name:ME.name})+'\n';
+  const hdrBytes=new TextEncoder().encode(hdrStr);
 
-  let worker=null;
-  let _fpsCount=0, _fpsLast=Date.now();
-
+  let _fpsCount=0,_fpsLast=Date.now();
   function trackFPS(){
     _fpsCount++;
     const now=Date.now();
     if(now-_fpsLast>=1000){
-      window._screenFPS=_fpsCount; _fpsCount=0; _fpsLast=now;
+      window._screenFPS=_fpsCount;_fpsCount=0;_fpsLast=now;
       const el=document.getElementById('screenFpsIndicator');
       if(el) el.textContent=window._screenFPS+'fps';
     }
   }
 
   function startWorker(w,h){
-    // Worker does ALL encoding — main thread only does drawImage on ImageBitmap
-    const workerCode=`
-      let canvas=null, ctx=null, ready=false;
-      let hdrBytes=null;
-      let wsRef=null;
-      let quality=${SCREEN_QUALITY||0.8};
-      let pending=false;
+    // Worker code: receives ImageBitmap, encodes JPEG, sends back FULL packet (hdr+jpeg)
+    const workerSrc=`
+      let canvas,ctx,hdr,pending=false;
+      const QUALITY=${SCREEN_QUALITY||0.8};
       const FPS=${SCREEN_FPS||60};
       const INTERVAL=Math.round(1000/FPS);
 
       self.onmessage=async function(e){
-        const {type}=e.data;
-        if(type==='init'){
-          canvas=e.data.canvas; // OffscreenCanvas transferred from main
+        if(e.data.type==='init'){
+          canvas=e.data.canvas;
           ctx=canvas.getContext('2d',{alpha:false});
-          hdrBytes=e.data.hdr;
-          ready=true;
-          // Start tick loop inside worker
-          let last=0;
-          function tick(ts){
-            self.postMessage({type:'tick'});
-            const delay=Math.max(0,INTERVAL-(Date.now()-last));
-            setTimeout(tick,delay);
-            last=Date.now();
-          }
-          setTimeout(tick,0);
-        } else if(type==='frame'){
-          if(!ready||pending) return;
+          hdr=e.data.hdr;
+          // Drive capture from worker via setInterval
+          setInterval(()=>self.postMessage({type:'tick'}),INTERVAL);
+        } else if(e.data.type==='frame'){
+          if(pending) return;
           pending=true;
           try{
-            // Draw the ImageBitmap sent from main thread
-            const bmp=e.data.bmp;
-            ctx.drawImage(bmp,0,0,canvas.width,canvas.height);
-            bmp.close();
-            const blob=await canvas.convertToBlob({type:'image/jpeg',quality});
-            const buf=await blob.arrayBuffer();
-            const combined=new Uint8Array(hdrBytes.length+buf.byteLength);
-            combined.set(hdrBytes,0);
-            combined.set(new Uint8Array(buf),hdrBytes.length);
-            // Transfer buffer back to main thread — zero copy
-            self.postMessage({type:'encoded',buf:combined.buffer},[combined.buffer]);
+            ctx.drawImage(e.data.bmp,0,0,canvas.width,canvas.height);
+            e.data.bmp.close();
+            const blob=await canvas.convertToBlob({type:'image/jpeg',quality:QUALITY});
+            const jpeg=await blob.arrayBuffer();
+            // Build full packet: hdr + jpeg
+            const out=new Uint8Array(hdr.length+jpeg.byteLength);
+            out.set(hdr,0);
+            out.set(new Uint8Array(jpeg),hdr.length);
+            // Transfer to main thread (zero-copy)
+            self.postMessage({type:'send',buf:out.buffer},[out.buffer]);
           }catch(err){}
           pending=false;
         }
       };
     `;
-    const blob=new Blob([workerCode],{type:'text/javascript'});
-    const wkr=new Worker(URL.createObjectURL(blob));
 
-    // Create OffscreenCanvas to transfer to worker
     let offscreen;
-    try{
-      offscreen=new OffscreenCanvas(w,h);
-    }catch(e){
-      // Fallback: no OffscreenCanvas support, use old method
-      startFallbackRelay(w,h);
-      return;
-    }
+    try{ offscreen=new OffscreenCanvas(w,h); }
+    catch(e){ startFallbackRelay(w,h); return; }
+
+    const blob=new Blob([workerSrc],{type:'text/javascript'});
+    const wkr=new Worker(URL.createObjectURL(blob));
 
     wkr.onmessage=function(e){
       if(e.data.type==='tick'){
-        // Main thread captures frame into ImageBitmap — very fast, no blocking
         if(!screenSharing||!ws||ws.readyState!==1||video.readyState<2) return;
-        createImageBitmap(video,{resizeWidth:w,resizeHeight:h,resizeQuality:'medium'})
+        // createImageBitmap is GPU-accelerated, doesn't block main thread
+        createImageBitmap(video,{resizeWidth:w,resizeHeight:h,resizeQuality:'pixelated'})
           .then(bmp=>{
             wkr.postMessage({type:'frame',bmp},[bmp]);
             trackFPS();
           }).catch(()=>{});
-      } else if(e.data.type==='encoded'){
-        if(!screenSharing||!ws||ws.readyState!==1) return;
-        // Combine header + jpeg and send
-        const jpegBuf=e.data.buf;
-        const combined=new Uint8Array(hdrBytes.length+jpegBuf.byteLength);
-        combined.set(hdrBytes,0);
-        combined.set(new Uint8Array(jpegBuf),hdrBytes.length);
-        ws.send(combined.buffer);
+      } else if(e.data.type==='send'){
+        // Full packet already assembled by worker — just send
+        if(screenSharing&&ws&&ws.readyState===1)
+          ws.send(e.data.buf);
       }
     };
 
     wkr.postMessage({type:'init',canvas:offscreen,hdr:hdrBytes},[offscreen]);
-    worker=wkr;
     screenRelayTimer=wkr;
 
-    // Anti-throttle tricks
+    // Anti-throttle: silent audio keeps tab active
     try{
       const sCtx=new AudioContext();
       const buf2=sCtx.createBuffer(1,sCtx.sampleRate*3,sCtx.sampleRate);
       function playSilent(){
         if(!screenSharing){sCtx.close();return;}
-        const s=sCtx.createBufferSource();s.buffer=buf2;s.connect(sCtx.destination);
-        s.onended=playSilent;s.start();
+        const s=sCtx.createBufferSource();s.buffer=buf2;
+        s.connect(sCtx.destination);s.onended=playSilent;s.start();
       }
-      playSilent(); window._silentCtx=sCtx;
+      playSilent();window._silentCtx=sCtx;
     }catch(e){}
     if(navigator.wakeLock){
       navigator.wakeLock.request('screen').then(l=>{window._wakeLock=l;}).catch(()=>{});
     }
   }
 
-  // Fallback for browsers without OffscreenCanvas (rare)
+  // Fallback for no OffscreenCanvas
   function startFallbackRelay(w,h){
     const canvas=document.createElement('canvas');
-    canvas.width=w; canvas.height=h;
+    canvas.width=w;canvas.height=h;
     const ctx2d=canvas.getContext('2d',{alpha:false});
     let pending=false;
-    const workerCode=`let t=null;self.onmessage=e=>{if(e.data==='start'){if(t)clearInterval(t);t=setInterval(()=>self.postMessage('tick'),${Math.round(1000/SCREEN_FPS)});}else if(e.data==='stop'){clearInterval(t);t=null;}};`;
-    const blob=new Blob([workerCode],{type:'text/javascript'});
-    const wkr=new Worker(URL.createObjectURL(blob));
-    wkr.onmessage=async()=>{
+    const workerSrc=`let t;self.onmessage=e=>{if(e.data==='start'){if(t)clearInterval(t);t=setInterval(()=>self.postMessage('tick'),${Math.round(1000/SCREEN_FPS)});}else{clearInterval(t);}};`;
+    const b2=new Blob([workerSrc],{type:'text/javascript'});
+    const wkr=new Worker(URL.createObjectURL(b2));
+    wkr.onmessage=()=>{
       if(pending||!screenSharing||!ws||ws.readyState!==1||video.readyState<2) return;
       pending=true;
       ctx2d.drawImage(video,0,0,w,h);
-      canvas.toBlob(blob2=>{
+      canvas.toBlob(blob=>{
         pending=false;
-        if(!blob2) return;
-        blob2.arrayBuffer().then(buf=>{
-          const c2=new Uint8Array(hdrBytes.length+buf.byteLength);
-          c2.set(hdrBytes,0);c2.set(new Uint8Array(buf),hdrBytes.length);
-          ws.send(c2.buffer);
+        if(!blob||!screenSharing) return;
+        blob.arrayBuffer().then(jpeg=>{
+          const out=new Uint8Array(hdrBytes.length+jpeg.byteLength);
+          out.set(hdrBytes,0);out.set(new Uint8Array(jpeg),hdrBytes.length);
+          ws.send(out.buffer);
           trackFPS();
         });
       },'image/jpeg',SCREEN_QUALITY);
     };
     wkr.postMessage('start');
-    worker=wkr; screenRelayTimer=wkr;
+    screenRelayTimer=wkr;
   }
 
   video.addEventListener('loadedmetadata',()=>{
-    const vw=video.videoWidth||1280, vh=video.videoHeight||720;
+    const vw=video.videoWidth||1280,vh=video.videoHeight||720;
     const scale=Math.min(1,SCREEN_MAX_W/vw);
-    const w=Math.round(vw*scale), h=Math.round(vh*scale);
-    startWorker(w,h);
+    startWorker(Math.round(vw*scale),Math.round(vh*scale));
   });
   if(video.readyState>=1) video.dispatchEvent(new Event('loadedmetadata'));
   window._screenRelayVideo=video;
