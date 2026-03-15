@@ -1417,8 +1417,8 @@ function handleAudioChunk(buf){
   src.buffer=abuf;
   src.connect(state.gainNode);
   const now=ctx.currentTime;
-  const BUFFER_AHEAD=0.08; // 80ms — slightly more for stability
-  if(state.nextTime < now + 0.005){
+  const BUFFER_AHEAD=0.02; // 20ms — minimal latency
+  if(state.nextTime < now + 0.002){
     state.nextTime = now + BUFFER_AHEAD;
   }
   src.start(state.nextTime);
@@ -2376,7 +2376,7 @@ function _renderCWPartPanel(){
   const panel=document.getElementById('cwPartPanel');if(!panel)return;
   const roomUsers=vcRooms[currentVoiceRoom]||{};
   const all=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true},
-    ...Object.entries(roomUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
+    ...Object.entries(roomUsers).filter(([uid])=>uid!==myUid).map(([uid,u])=>({uid,...u,isMe:false}))];
   panel.innerHTML='<div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#72767d;margin-bottom:10px;font-weight:600">Участники — '+all.length+'</div>'+
     all.map(u=>{
       const isMic=u.isMe&&micMuted;
@@ -2418,8 +2418,9 @@ function updateCallWindow(){
   const body=document.getElementById('cwBody');
   if(!body) return;
   const roomUsers=vcRooms[currentVoiceRoom]||{};
+  // Start with self, then add peers (excluding self to prevent duplicates)
   const allUsers=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true},
-    ...Object.entries(roomUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
+    ...Object.entries(roomUsers).filter(([uid])=>uid!==myUid).map(([uid,u])=>({uid,...u,isMe:false}))];
   const count=allUsers.length;
 
   // Update participants count badge
@@ -2542,7 +2543,7 @@ function updateVCBar(){
   const el=document.getElementById('vbarUsers');if(!el||!inVoice)return;
   const users=vcRooms[currentVoiceRoom]||{};
   const me={uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true};
-  const all=[me,...Object.entries(users).map(([uid,u])=>({uid,...u,isMe:false}))];
+  const all=[me,...Object.entries(users).filter(([uid])=>uid!==myUid).map(([uid,u])=>({uid,...u,isMe:false}))];
   el.innerHTML=all.map(u=>{
     const isMic=u.isMe&&micMuted;
     const spk=u.speaking&&!isMic;
