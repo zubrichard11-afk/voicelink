@@ -858,13 +858,11 @@ function handleWS(d){
 async function startMicRelay(){
   try{
     micStream=await navigator.mediaDevices.getUserMedia({audio:{
-    sampleRate:48000,
-    channelCount:1,
-    echoCancellation:true,
-    noiseSuppression:true,
-    autoGainControl:true,
-    latency:0.01  // request low latency
-  },video:false});
+      channelCount:1,
+      echoCancellation:true,
+      noiseSuppression:true,
+      autoGainControl:true
+    },video:false});
   }catch(e){
     toast('Микрофон','🎙','Нет доступа к микрофону: '+e.message,'error');
     return false;
@@ -872,49 +870,33 @@ async function startMicRelay(){
   audioCtx=new AudioContext({sampleRate:48000,latencyHint:'interactive'});
   if(audioCtx.state==='suspended') await audioCtx.resume();
   const src=audioCtx.createMediaStreamSource(micStream);
-
-  // Highpass 85Hz: убирает гул, стук по столу — не трогает голос
-  const hpf=audioCtx.createBiquadFilter();
-  hpf.type='highpass'; hpf.frequency.value=85; hpf.Q.value=0.5;
-
-  // Лёгкий компрессор только против клиппинга — не давит голос
-  const comp=audioCtx.createDynamicsCompressor();
-  comp.threshold.value=-6;   // только самые громкие пики
-  comp.knee.value=3;
-  comp.ratio.value=2;        // очень мягко: 2:1
-  comp.attack.value=0.001;   // 1ms — быстро ловит пики
-  comp.release.value=0.1;
-
-  // Chain: src -> hpf -> comp -> processor
-  src.connect(hpf);
-  hpf.connect(comp);
   micProcessor=audioCtx.createScriptProcessor(CHUNK_SAMPLES,1,1);
-  comp.connect(micProcessor);
+  src.connect(micProcessor);
+  // GainNode с 0 — нужен чтобы ScriptProcessor работал, но мы себя не слышим
+  const silentOut=audioCtx.createGain();
+  silentOut.gain.value=0;
+  micProcessor.connect(silentOut);
+  silentOut.connect(audioCtx.destination);
+
   micProcessor.onaudioprocess=e=>{
     if(!inVoice) return;
-    // PTT: only transmit while key held
-    if(pttMode&&!pttHeld){
-      return;
-    }
-    if(micMuted){
-      return;
-    }
+    if(pttMode&&!pttHeld) return;
+    if(micMuted) return;
     const f32=e.inputBuffer.getChannelData(0);
     // VAD
     const vol=f32.reduce((a,b)=>a+Math.abs(b),0)/f32.length;
     const spk=vol>0.008;
-    // Convert to Int16 and send audio
+    // Convert to Int16 and send
     const i16=new Int16Array(f32.length);
     for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
     wsSendBinary(i16.buffer);
-    // Adaptive bitrate: skip every other frame when silent
+    // Adaptive bitrate: 1/3 frames when silent
     if(adaptiveBitrate&&!spk){
       if(!window._abSkip) window._abSkip=0;
       window._abSkip++;
-      if(window._abSkip%3!==0) return; // send 1/3 frames when silent
+      if(window._abSkip%3!==0) return;
     } else { window._abSkip=0; }
-
-    // Speaking indicator — only send on change
+    // Speaking indicator
     const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking);
     if(spk!==prevSpk){
       wsSend({type:'speaking',speaking:spk});
@@ -923,12 +905,6 @@ async function startMicRelay(){
       scheduleUI(()=>{renderVCUsers();updateVCBar();updateWidget();});
     }
   };
-  // ScriptProcessor требует подключения к destination чтобы работать,
-  // но нам не нужно слышать себя — подключаем через gain=0
-  const silentGain=audioCtx.createGain();
-  silentGain.gain.value=0;
-  micProcessor.connect(silentGain);
-  silentGain.connect(audioCtx.destination);
   return true;
 }
 
@@ -1437,13 +1413,6 @@ function stopScreenShare(){
 function startScreenRelay(){
   if(screenRelayTimer) stopScreenRelayInternal();
 
-  const video=document.createElement('video');
-  video.srcObject=screenStream;
-  video.muted=true;
-  video.playsInline=true;
-  video.play();
-
-  // Header bytes — built once, reused every frame
   const hdrStr=JSON.stringify({type:'screen_frame',from:myUid,name:ME.name})+'\n';
   const hdrBytes=new TextEncoder().encode(hdrStr);
 
@@ -1454,128 +1423,201 @@ function startScreenRelay(){
     if(now-_fpsLast>=1000){
       window._screenFPS=_fpsCount;_fpsCount=0;_fpsLast=now;
       const el=document.getElementById('screenFpsIndicator');
-      if(el) el.textContent=window._screenFPS+'fps';
+      if(el)el.textContent=window._screenFPS+'fps';
     }
   }
 
-  function startWorker(w,h){
-    // Worker code: receives ImageBitmap, encodes JPEG, sends back FULL packet (hdr+jpeg)
-    const workerSrc=`
-      let canvas,ctx,hdr,pending=false;
-      const QUALITY=${SCREEN_QUALITY||0.8};
-      const FPS=${SCREEN_FPS||60};
-      const INTERVAL=Math.round(1000/FPS);
+  // ── Strategy 1: MediaStreamTrackProcessor — video frames go directly to worker
+  // Main thread does ZERO work per frame
+  if(window.MediaStreamTrackProcessor && window.MediaStreamTrackGenerator){
+    try{
+      const track=screenStream.getVideoTracks()[0];
+      const processor=new MediaStreamTrackProcessor({track});
+      const reader=processor.readable;
 
-      self.onmessage=async function(e){
-        if(e.data.type==='init'){
-          canvas=e.data.canvas;
-          ctx=canvas.getContext('2d',{alpha:false});
-          hdr=e.data.hdr;
-          // Drive capture from worker via setInterval
-          setInterval(()=>self.postMessage({type:'tick'}),INTERVAL);
-        } else if(e.data.type==='frame'){
-          if(pending) return;
-          pending=true;
-          try{
-            ctx.drawImage(e.data.bmp,0,0,canvas.width,canvas.height);
-            e.data.bmp.close();
-            const blob=await canvas.convertToBlob({type:'image/jpeg',quality:QUALITY});
-            const jpeg=await blob.arrayBuffer();
-            // Build full packet: hdr + jpeg
-            const out=new Uint8Array(hdr.length+jpeg.byteLength);
-            out.set(hdr,0);
-            out.set(new Uint8Array(jpeg),hdr.length);
-            // Transfer to main thread (zero-copy)
-            self.postMessage({type:'send',buf:out.buffer},[out.buffer]);
-          }catch(err){}
-          pending=false;
+      // Transfer readable stream to worker — main thread completely free
+      const workerSrc=`
+        let canvas,ctx,hdr,ws2,pending=false;
+        const QUALITY=${SCREEN_QUALITY||0.8};
+        const FPS=${SCREEN_FPS||60};
+        const INTERVAL=1000/FPS;
+        let lastSend=0;
+
+        self.onmessage=function(e){
+          if(e.data.type==='init'){
+            canvas=e.data.canvas;
+            ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
+            hdr=e.data.hdr;
+            const reader=e.data.reader;
+            // Read video frames in worker
+            const pump=async()=>{
+              const r=reader.getReader();
+              while(true){
+                const {done,value}=await r.read();
+                if(done)break;
+                const now=Date.now();
+                if(now-lastSend<INTERVAL||pending){value.close();continue;}
+                lastSend=now;
+                if(value.displayWidth!==canvas.width||value.displayHeight!==canvas.height){
+                  canvas.width=value.displayWidth;canvas.height=value.displayHeight;
+                }
+                pending=true;
+                ctx.drawImage(value,0,0);
+                value.close();
+                canvas.convertToBlob({type:'image/jpeg',quality:QUALITY}).then(blob=>{
+                  return blob.arrayBuffer();
+                }).then(jpeg=>{
+                  const out=new Uint8Array(hdr.length+jpeg.byteLength);
+                  out.set(hdr,0);out.set(new Uint8Array(jpeg),hdr.length);
+                  self.postMessage({type:'send',buf:out.buffer},[out.buffer]);
+                  pending=false;
+                }).catch(()=>{pending=false;});
+              }
+            };
+            pump();
+          }
+        };
+      `;
+      const b=new Blob([workerSrc],{type:'text/javascript'});
+      const wkr=new Worker(URL.createObjectURL(b));
+      let offscreen;
+      try{ offscreen=new OffscreenCanvas(1280,720); }
+      catch(e){ throw new Error('no OffscreenCanvas'); }
+
+      wkr.onmessage=function(e){
+        if(e.data.type==='send'){
+          if(screenSharing&&ws&&ws.readyState===1){
+            ws.send(e.data.buf);
+            trackFPS();
+          }
         }
       };
-    `;
-
-    let offscreen;
-    try{ offscreen=new OffscreenCanvas(w,h); }
-    catch(e){ startFallbackRelay(w,h); return; }
-
-    const blob=new Blob([workerSrc],{type:'text/javascript'});
-    const wkr=new Worker(URL.createObjectURL(blob));
-
-    wkr.onmessage=function(e){
-      if(e.data.type==='tick'){
-        if(!screenSharing||!ws||ws.readyState!==1||video.readyState<2) return;
-        // createImageBitmap is GPU-accelerated, doesn't block main thread
-        createImageBitmap(video,{resizeWidth:w,resizeHeight:h,resizeQuality:'pixelated'})
-          .then(bmp=>{
-            wkr.postMessage({type:'frame',bmp},[bmp]);
-            trackFPS();
-          }).catch(()=>{});
-      } else if(e.data.type==='send'){
-        // Full packet already assembled by worker — just send
-        if(screenSharing&&ws&&ws.readyState===1)
-          ws.send(e.data.buf);
-      }
-    };
-
-    wkr.postMessage({type:'init',canvas:offscreen,hdr:hdrBytes},[offscreen]);
-    screenRelayTimer=wkr;
-
-    // Anti-throttle: silent audio keeps tab active
-    try{
-      const sCtx=new AudioContext();
-      const buf2=sCtx.createBuffer(1,sCtx.sampleRate*3,sCtx.sampleRate);
-      function playSilent(){
-        if(!screenSharing){sCtx.close();return;}
-        const s=sCtx.createBufferSource();s.buffer=buf2;
-        s.connect(sCtx.destination);s.onended=playSilent;s.start();
-      }
-      playSilent();window._silentCtx=sCtx;
-    }catch(e){}
-    if(navigator.wakeLock){
-      navigator.wakeLock.request('screen').then(l=>{window._wakeLock=l;}).catch(()=>{});
+      wkr.postMessage({type:'init',canvas:offscreen,hdr:hdrBytes,reader},[offscreen,reader]);
+      screenRelayTimer=wkr;
+      _applyAntiThrottle();
+      return; // done — zero main thread usage
+    }catch(e){
+      console.log('MediaStreamTrackProcessor not available, falling back');
     }
   }
 
-  // Fallback for no OffscreenCanvas
-  function startFallbackRelay(w,h){
-    const canvas=document.createElement('canvas');
-    canvas.width=w;canvas.height=h;
-    const ctx2d=canvas.getContext('2d',{alpha:false});
-    let pending=false;
-    const workerSrc=`let t;self.onmessage=e=>{if(e.data==='start'){if(t)clearInterval(t);t=setInterval(()=>self.postMessage('tick'),${Math.round(1000/SCREEN_FPS)});}else{clearInterval(t);}};`;
-    const b2=new Blob([workerSrc],{type:'text/javascript'});
-    const wkr=new Worker(URL.createObjectURL(b2));
-    wkr.onmessage=()=>{
-      if(pending||!screenSharing||!ws||ws.readyState!==1||video.readyState<2) return;
-      pending=true;
-      ctx2d.drawImage(video,0,0,w,h);
-      canvas.toBlob(blob=>{
+  // ── Strategy 2: createImageBitmap in worker via video element ──
+  // Main thread sends ImageBitmap (async GPU op, non-blocking)
+  const video=document.createElement('video');
+  video.srcObject=screenStream;
+  video.muted=true;
+  video.playsInline=true;
+  video.play();
+  window._screenRelayVideo=video;
+
+  const workerSrc2=`
+    let canvas,ctx,hdr,pending=false;
+    const QUALITY=${SCREEN_QUALITY||0.8};
+    const FPS=${SCREEN_FPS||60};
+    const INTERVAL=Math.round(1000/FPS);
+
+    self.onmessage=async function(e){
+      if(e.data.type==='init'){
+        canvas=e.data.canvas;
+        ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
+        hdr=e.data.hdr;
+        setInterval(()=>self.postMessage({type:'tick'}),INTERVAL);
+      } else if(e.data.type==='frame'){
+        if(pending)return;
+        pending=true;
+        try{
+          ctx.drawImage(e.data.bmp,0,0,canvas.width,canvas.height);
+          e.data.bmp.close();
+          const blob=await canvas.convertToBlob({type:'image/jpeg',quality:QUALITY});
+          const jpeg=await blob.arrayBuffer();
+          const out=new Uint8Array(hdr.length+jpeg.byteLength);
+          out.set(hdr,0);out.set(new Uint8Array(jpeg),hdr.length);
+          self.postMessage({type:'send',buf:out.buffer},[out.buffer]);
+        }catch(err){}
         pending=false;
-        if(!blob||!screenSharing) return;
-        blob.arrayBuffer().then(jpeg=>{
-          const out=new Uint8Array(hdrBytes.length+jpeg.byteLength);
-          out.set(hdrBytes,0);out.set(new Uint8Array(jpeg),hdrBytes.length);
-          ws.send(out.buffer);
-          trackFPS();
-        });
-      },'image/jpeg',SCREEN_QUALITY);
+      }
     };
-    wkr.postMessage('start');
-    screenRelayTimer=wkr;
-  }
+  `;
+
+  let offscreen2;
+  try{ offscreen2=new OffscreenCanvas(1,1); }
+  catch(e){ startFallbackRelay(video,hdrBytes,trackFPS); return; }
+
+  const b2=new Blob([workerSrc2],{type:'text/javascript'});
+  const wkr2=new Worker(URL.createObjectURL(b2));
 
   video.addEventListener('loadedmetadata',()=>{
     const vw=video.videoWidth||1280,vh=video.videoHeight||720;
     const scale=Math.min(1,SCREEN_MAX_W/vw);
-    startWorker(Math.round(vw*scale),Math.round(vh*scale));
+    const w=Math.round(vw*scale),h=Math.round(vh*scale);
+    const oc=new OffscreenCanvas(w,h);
+    wkr2.postMessage({type:'init',canvas:oc,hdr:hdrBytes},[oc]);
   });
+
+  wkr2.onmessage=function(e){
+    if(e.data.type==='tick'){
+      if(!screenSharing||!ws||ws.readyState!==1||video.readyState<2)return;
+      // createImageBitmap is async — returns immediately, doesn't block main thread
+      createImageBitmap(video).then(bmp=>{
+        wkr2.postMessage({type:'frame',bmp},[bmp]);
+        trackFPS();
+      }).catch(()=>{});
+    } else if(e.data.type==='send'){
+      if(screenSharing&&ws&&ws.readyState===1) ws.send(e.data.buf);
+    }
+  };
+  screenRelayTimer=wkr2;
+  _applyAntiThrottle();
   if(video.readyState>=1) video.dispatchEvent(new Event('loadedmetadata'));
-  window._screenRelayVideo=video;
+}
+
+function _applyAntiThrottle(){
+  try{
+    const sCtx=new AudioContext();
+    const buf=sCtx.createBuffer(1,sCtx.sampleRate*3,sCtx.sampleRate);
+    function loop(){
+      if(!screenSharing){sCtx.close();return;}
+      const s=sCtx.createBufferSource();s.buffer=buf;
+      s.connect(sCtx.destination);s.onended=loop;s.start();
+    }
+    loop();window._silentCtx=sCtx;
+  }catch(e){}
+  if(navigator.wakeLock){
+    navigator.wakeLock.request('screen').then(l=>{window._wakeLock=l;}).catch(()=>{});
+  }
+}
+
+function startFallbackRelay(video,hdrBytes,trackFPS){
+  // Pure canvas fallback — main thread encodes, lowest priority
+  const canvas=document.createElement('canvas');
+  const ctx=canvas.getContext('2d',{alpha:false});
+  let pending=false;
+  const workerSrc=`let t;self.onmessage=e=>{if(e.data==='start'){if(t)clearInterval(t);t=setInterval(()=>self.postMessage('t'),${Math.round(1000/SCREEN_FPS)});}};`;
+  const wkr=new Worker(URL.createObjectURL(new Blob([workerSrc],{type:'text/javascript'})));
+  wkr.onmessage=()=>{
+    if(pending||!screenSharing||video.readyState<2||!ws||ws.readyState!==1)return;
+    pending=true;
+    const vw=video.videoWidth,vh=video.videoHeight;
+    const scale=Math.min(1,SCREEN_MAX_W/vw);
+    canvas.width=Math.round(vw*scale);canvas.height=Math.round(vh*scale);
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    canvas.toBlob(blob=>{
+      pending=false;if(!blob)return;
+      blob.arrayBuffer().then(jpeg=>{
+        const out=new Uint8Array(hdrBytes.length+jpeg.byteLength);
+        out.set(hdrBytes,0);out.set(new Uint8Array(jpeg),hdrBytes.length);
+        ws.send(out.buffer);trackFPS();
+      });
+    },'image/jpeg',SCREEN_QUALITY);
+  };
+  wkr.postMessage('start');
+  screenRelayTimer=wkr;
+  _applyAntiThrottle();
 }
 
 function stopScreenRelayInternal(){
   if(screenRelayTimer){
     try{screenRelayTimer.terminate();}catch(e){}
-    try{screenRelayTimer.postMessage('stop');}catch(e){}
   }
   screenRelayTimer=null;
   if(window._screenRelayVideo){
