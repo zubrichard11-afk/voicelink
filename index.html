@@ -16,6 +16,10 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--text0);font-family:var(--font);font-size:13px}
+body.compact .msg-g{padding-top:1px;padding-bottom:1px}
+body.compact .msg-av{width:32px;height:32px;font-size:12px}
+body.compact .msg-txt{font-size:12px}
+body.no-animations *{transition:none !important;animation:none !important}
 button{cursor:pointer;font-family:var(--font)}
 input,textarea{font-family:var(--font)}
 #setupScreen{position:fixed;inset:0;background:var(--bg0);z-index:1000;display:flex;align-items:center;justify-content:center}
@@ -331,6 +335,25 @@ input,textarea{font-family:var(--font)}
 .s-nav-item.act{background:#404249;color:#fff}
 .s-nav-sep{height:1px;background:rgba(255,255,255,.06);margin:8px 4px}
 .s-nav-danger{color:#ed4245 !important}
+.s-accent-opt{width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform .15s,border-color .15s;flex-shrink:0}
+.s-accent-opt:hover{transform:scale(1.15)}
+.s-accent-opt.act{border-color:#fff}
+.s-sound-opt{padding:6px 14px;border-radius:20px;border:1px solid rgba(255,255,255,.15);background:var(--bg3);color:#96989d;font-size:12px;cursor:pointer;font-family:var(--font);transition:all .15s}
+.s-sound-opt:hover{background:var(--bg4);color:#dcddde}
+.s-sound-opt.act{background:var(--accent);color:#fff;border-color:transparent}
+.s-status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.s-status-opt{padding:7px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:var(--bg3);color:#96989d;font-size:12px;cursor:pointer;font-family:var(--font);transition:all .15s;display:flex;align-items:center}
+.s-status-opt:hover{background:var(--bg4);color:#dcddde}
+.s-status-opt.act{border-color:var(--accent);color:#fff;background:rgba(88,101,242,.2)}
+.s-keybind-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.s-keybind-label{font-size:13px;color:#dcddde}
+.s-keybind-key{background:var(--bg3);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:5px 12px;font-size:12px;color:#dcddde;cursor:pointer;font-family:var(--font);transition:all .15s;min-width:120px;text-align:center}
+.s-keybind-key:hover{border-color:var(--accent);color:var(--accent)}
+.s-keybind-key.listening{border-color:var(--accent);background:rgba(88,101,242,.15);color:var(--accent);animation:pulse-border 1s ease-in-out infinite}
+@keyframes pulse-border{0%,100%{border-color:var(--accent)}50%{border-color:rgba(88,101,242,.3)}}
+.s-lang-opt{display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:var(--bg3);cursor:pointer;transition:all .15s;font-size:13px;color:#dcddde}
+.s-lang-opt:hover{background:var(--bg4)}
+.s-lang-opt.act{border-color:var(--accent);background:rgba(88,101,242,.1)}
 .s-nav-danger:hover{background:rgba(237,66,69,.1) !important;color:#ed4245 !important}
 .settings-body{flex:1;overflow-y:auto;padding:32px 40px;background:#111217}
 .settings-body::-webkit-scrollbar{width:6px}
@@ -1785,11 +1808,15 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
     <div class="settings-nav">
       <div class="s-nav-lbl">Профиль</div>
       <button class="s-nav-item act" onclick="showSPage('profile',this)">👤 Мой профиль</button>
+      <button class="s-nav-item" onclick="showSPage('status',this)">✏️ Статус</button>
+      <button class="s-nav-item" onclick="showSPage('privacy',this)">🔒 Приватность</button>
       <div class="s-nav-sep"></div>
       <div class="s-nav-lbl">Приложение</div>
       <button class="s-nav-item" onclick="showSPage('voice',this)">🎙 Голос и видео</button>
       <button class="s-nav-item" onclick="showSPage('notifications',this)">🔔 Уведомления</button>
       <button class="s-nav-item" onclick="showSPage('appearance',this)">🎨 Внешний вид</button>
+      <button class="s-nav-item" onclick="showSPage('keybinds',this)">⌨️ Горячие клавиши</button>
+      <button class="s-nav-item" onclick="showSPage('language',this)">🌐 Язык</button>
       <div class="s-nav-sep"></div>
       <div class="s-nav-lbl">Информация</div>
       <button class="s-nav-item" onclick="showSPage('about',this)">ℹ️ О приложении</button>
@@ -1917,28 +1944,53 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
         <div class="s-title">Уведомления</div>
         <div class="s-subtitle">Управление звуками и оповещениями</div>
         <div class="s-section">
-          <div class="s-section-title">Звуки</div>
+          <div class="s-section-title">Звуки событий</div>
           <div class="s-row">
-            <div class="s-row-info"><div class="s-row-label">Звук входящего звонка</div></div>
-            <label class="s-toggle"><input type="checkbox" id="sRingSound" checked><span class="s-toggle-slider"></span></label>
+            <div class="s-row-info"><div class="s-row-label">Входящий звонок</div><div class="s-row-desc">Звук при входящем голосовом вызове</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sRingSound" checked onchange="saveNotifSettings()"><span class="s-toggle-slider"></span></label>
           </div>
           <div class="s-row">
-            <div class="s-row-info"><div class="s-row-label">Звук сообщений</div></div>
-            <label class="s-toggle"><input type="checkbox" id="sMsgSound" checked><span class="s-toggle-slider"></span></label>
+            <div class="s-row-info"><div class="s-row-label">Новое сообщение</div><div class="s-row-desc">Звук при получении DM</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sMsgSound" checked onchange="saveNotifSettings()"><span class="s-toggle-slider"></span></label>
           </div>
           <div class="s-row">
-            <div class="s-row-info"><div class="s-row-label">Звук входа в канал</div></div>
-            <label class="s-toggle"><input type="checkbox" id="sJoinSound" checked><span class="s-toggle-slider"></span></label>
+            <div class="s-row-info"><div class="s-row-label">Вход в канал</div><div class="s-row-desc">Кто-то зашёл в голосовой канал</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sJoinSound" checked onchange="saveNotifSettings()"><span class="s-toggle-slider"></span></label>
+          </div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Выход из канала</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sLeaveSound" checked onchange="saveNotifSettings()"><span class="s-toggle-slider"></span></label>
+          </div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Упоминание (@)</div><div class="s-row-desc">Когда вас упомянули в чате</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sMentionSound" checked onchange="saveNotifSettings()"><span class="s-toggle-slider"></span></label>
           </div>
         </div>
         <div class="s-section">
-          <div class="s-section-title">Оповещения</div>
-          <div class="s-row">
-            <div class="s-row-info">
-              <div class="s-row-label">Показывать тосты</div>
-              <div class="s-row-desc">Всплывающие уведомления в углу экрана</div>
+          <div class="s-section-title">Тип звука уведомлений</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+            <button class="s-sound-opt act" id="ssnd-default" onclick="selectNotifSound('default',this)">🔔 Стандартный</button>
+            <button class="s-sound-opt" id="ssnd-soft" onclick="selectNotifSound('soft',this)">🎵 Мягкий</button>
+            <button class="s-sound-opt" id="ssnd-ping" onclick="selectNotifSound('ping',this)">📍 Пинг</button>
+            <button class="s-sound-opt" id="ssnd-none" onclick="selectNotifSound('none',this)">🔇 Без звука</button>
+          </div>
+          <div class="s-row" style="margin-top:12px">
+            <div class="s-row-info"><div class="s-row-label">Громкость уведомлений</div></div>
+            <div class="s-slider-wrap">
+              <input type="range" min="0" max="100" value="70" id="sNotifVol" oninput="document.getElementById('sNotifVolVal').textContent=this.value+'%';saveNotifSettings()">
+              <span class="s-slider-val" id="sNotifVolVal">70%</span>
             </div>
-            <label class="s-toggle"><input type="checkbox" id="sToasts" checked><span class="s-toggle-slider"></span></label>
+          </div>
+        </div>
+        <div class="s-section">
+          <div class="s-section-title">Попапы</div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Показывать тосты</div><div class="s-row-desc">Всплывающие уведомления в углу экрана</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sToasts" checked onchange="saveNotifSettings()"><span class="s-toggle-slider"></span></label>
+          </div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Уведомления только для DM</div><div class="s-row-desc">Тосты только от личных сообщений</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sDMOnly" onchange="saveNotifSettings()"><span class="s-toggle-slider"></span></label>
           </div>
         </div>
       </div>
@@ -1946,31 +1998,156 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
       <!-- APPEARANCE -->
       <div class="s-page" id="spage-appearance">
         <div class="s-title">Внешний вид</div>
-        <div class="s-subtitle">Тема и отображение интерфейса</div>
+        <div class="s-subtitle">Тема, цвета и отображение интерфейса</div>
         <div class="s-section">
-          <div class="s-section-title">Тема</div>
-          <div style="display:flex;gap:12px;margin-top:8px">
-            <div onclick="setTheme('dark')" style="background:#111217;border:2px solid #5865f2;border-radius:8px;padding:16px 24px;cursor:pointer;text-align:center;font-size:12px;color:#fff">🌙 Тёмная<br><span style="color:#72767d;font-size:10px">Текущая</span></div>
-            <div onclick="toast('Тема','🎨','Скоро!','info')" style="background:#fff;border:2px solid rgba(255,255,255,.1);border-radius:8px;padding:16px 24px;cursor:pointer;text-align:center;font-size:12px;color:#000">☀️ Светлая<br><span style="color:#666;font-size:10px">Скоро</span></div>
+          <div class="s-section-title">Акцент-цвет</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px" id="accentPicker">
+            <div class="s-accent-opt act" data-color="#5865f2" style="background:#5865f2" onclick="setAccentColor('#5865f2',this)" title="Discord Blue"></div>
+            <div class="s-accent-opt" data-color="#3ba55c" style="background:#3ba55c" onclick="setAccentColor('#3ba55c',this)" title="Зелёный"></div>
+            <div class="s-accent-opt" data-color="#eb459e" style="background:#eb459e" onclick="setAccentColor('#eb459e',this)" title="Розовый"></div>
+            <div class="s-accent-opt" data-color="#ed4245" style="background:#ed4245" onclick="setAccentColor('#ed4245',this)" title="Красный"></div>
+            <div class="s-accent-opt" data-color="#faa61a" style="background:#faa61a" onclick="setAccentColor('#faa61a',this)" title="Оранжевый"></div>
+            <div class="s-accent-opt" data-color="#00b0f4" style="background:#00b0f4" onclick="setAccentColor('#00b0f4',this)" title="Голубой"></div>
+            <div class="s-accent-opt" data-color="#9c59b6" style="background:#9c59b6" onclick="setAccentColor('#9c59b6',this)" title="Фиолетовый"></div>
+            <div class="s-accent-opt" data-color="#1abc9c" style="background:#1abc9c" onclick="setAccentColor('#1abc9c',this)" title="Бирюзовый"></div>
+          </div>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+            <span style="font-size:12px;color:#96989d">Свой цвет:</span>
+            <input type="color" id="sAccentCustom" value="#5865f2" oninput="setAccentColor(this.value,null)" style="width:36px;height:28px;border:none;border-radius:6px;cursor:pointer;background:none">
           </div>
         </div>
         <div class="s-section">
-          <div class="s-section-title">Сообщения</div>
+          <div class="s-section-title">Интерфейс</div>
           <div class="s-row">
-            <div class="s-row-info">
-              <div class="s-row-label">Компактный режим</div>
-              <div class="s-row-desc">Уменьшает отступы между сообщениями</div>
-            </div>
-            <label class="s-toggle"><input type="checkbox" id="sCompact"><span class="s-toggle-slider"></span></label>
+            <div class="s-row-info"><div class="s-row-label">Компактный режим</div><div class="s-row-desc">Уменьшает отступы между сообщениями</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sCompact" onchange="applyCompact(this.checked)"><span class="s-toggle-slider"></span></label>
           </div>
           <div class="s-row">
-            <div class="s-row-info">
-              <div class="s-row-label">Размер шрифта</div>
-            </div>
+            <div class="s-row-info"><div class="s-row-label">Размер шрифта</div></div>
             <div class="s-slider-wrap">
               <input type="range" min="11" max="18" value="13" id="sFontSize" oninput="setFontSize(this.value)">
               <span class="s-slider-val" id="sFontSizeVal">13px</span>
             </div>
+          </div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Анимации</div><div class="s-row-desc">Плавные переходы и эффекты</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sAnimations" checked onchange="applyAnimations(this.checked)"><span class="s-toggle-slider"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATUS -->
+      <div class="s-page" id="spage-status">
+        <div class="s-title">Кастомный статус</div>
+        <div class="s-subtitle">Покажи что ты делаешь прямо сейчас</div>
+        <div class="s-section">
+          <div class="s-section-title">Статус</div>
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <button class="s-status-opt" data-s="online" onclick="setMyStatus('online',this)"><span style="background:#23a55a" class="s-status-dot"></span>В сети</button>
+            <button class="s-status-opt" data-s="idle" onclick="setMyStatus('idle',this)"><span style="background:#faa61a" class="s-status-dot"></span>Отошёл</button>
+            <button class="s-status-opt" data-s="dnd" onclick="setMyStatus('dnd',this)"><span style="background:#ed4245" class="s-status-dot"></span>Не беспокоить</button>
+            <button class="s-status-opt" data-s="invisible" onclick="setMyStatus('invisible',this)"><span style="background:#747f8d" class="s-status-dot"></span>Невидимый</button>
+          </div>
+          <div class="s-section-title" style="margin-top:8px">Текст статуса</div>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+            <div id="sStatusEmojiBtn" onclick="toggleEmojiPicker()" style="width:36px;height:36px;background:var(--bg3);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;flex-shrink:0;border:1px solid rgba(255,255,255,.1)">😊</div>
+            <input type="text" id="sStatusText" maxlength="64" placeholder="Что сейчас происходит?" style="flex:1;background:var(--bg1);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 12px;color:#dcddde;font-size:13px;outline:none;font-family:var(--font)" oninput="updateStatusPreview()">
+          </div>
+          <div id="sEmojiPicker" style="display:none;margin-top:8px;background:var(--bg3);border-radius:8px;padding:8px;display:none;flex-wrap:wrap;gap:4px;max-width:320px">
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${['😊','😎','🎮','💻','🎵','📚','☕','🍕','😴','🏋️','🎯','✈️','🔥','⚡','🌙','🎨','📝','🤔','👋','🚀'].map(e=>`<span onclick="pickEmoji('${e}')" style="font-size:22px;cursor:pointer;padding:2px;border-radius:4px;hover:background:#fff">${e}</span>`).join('')}
+            </div>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button onclick="saveCustomStatus()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font);font-weight:700">Сохранить</button>
+            <button onclick="clearCustomStatus()" style="padding:8px 16px;background:var(--bg3);color:#96989d;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font)">Очистить</button>
+          </div>
+          <div id="sStatusPreview" style="margin-top:12px;padding:10px 14px;background:var(--bg3);border-radius:8px;font-size:12px;color:#96989d;display:none"></div>
+        </div>
+      </div>
+
+      <!-- PRIVACY -->
+      <div class="s-page" id="spage-privacy">
+        <div class="s-title">Приватность</div>
+        <div class="s-subtitle">Контролируй кто что видит</div>
+        <div class="s-section">
+          <div class="s-section-title">Видимость</div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Показывать онлайн-статус</div><div class="s-row-desc">Другие видят онлайн/оффлайн</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sShowOnline" checked onchange="savePrivacySettings()"><span class="s-toggle-slider"></span></label>
+          </div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Показывать активность</div><div class="s-row-desc">Текущий статус и текст статуса</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sShowActivity" checked onchange="savePrivacySettings()"><span class="s-toggle-slider"></span></label>
+          </div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Разрешить DM от всех</div><div class="s-row-desc">Личные сообщения от незнакомых</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sAllowDM" checked onchange="savePrivacySettings()"><span class="s-toggle-slider"></span></label>
+          </div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Разрешить запросы в друзья</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sAllowFriendReq" checked onchange="savePrivacySettings()"><span class="s-toggle-slider"></span></label>
+          </div>
+        </div>
+        <div class="s-section">
+          <div class="s-section-title">Звонки</div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Принимать звонки от</div></div>
+            <select class="s-select" id="sCallFrom" onchange="savePrivacySettings()" style="width:auto">
+              <option value="all">Всех</option>
+              <option value="friends">Только друзей</option>
+              <option value="none">Никого</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- KEYBINDS -->
+      <div class="s-page" id="spage-keybinds">
+        <div class="s-title">Горячие клавиши</div>
+        <div class="s-subtitle">Настрой комбинации для быстрых действий</div>
+        <div class="s-section">
+          <div class="s-section-title">Голос</div>
+          <div class="s-keybind-row">
+            <div class="s-keybind-label">Мут микрофона</div>
+            <div class="s-keybind-key" id="kb-mic" onclick="startRebind('mic',this)" data-action="mic">Ctrl+M</div>
+          </div>
+          <div class="s-keybind-row">
+            <div class="s-keybind-label">Заглушить звук (deaf)</div>
+            <div class="s-keybind-key" id="kb-deaf" onclick="startRebind('deaf',this)" data-action="deaf">Ctrl+D</div>
+          </div>
+          <div class="s-keybind-row">
+            <div class="s-keybind-label">Демонстрация экрана</div>
+            <div class="s-keybind-key" id="kb-screen" onclick="startRebind('screen',this)" data-action="screen">Ctrl+Shift+S</div>
+          </div>
+          <div class="s-keybind-row">
+            <div class="s-keybind-label">Покинуть канал</div>
+            <div class="s-keybind-key" id="kb-leave" onclick="startRebind('leave',this)" data-action="leave">Ctrl+Shift+D</div>
+          </div>
+        </div>
+        <div class="s-section">
+          <div class="s-section-title">Интерфейс</div>
+          <div class="s-keybind-row">
+            <div class="s-keybind-label">Настройки</div>
+            <div class="s-keybind-key" id="kb-settings" onclick="startRebind('settings',this)" data-action="settings">Ctrl+,</div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <button onclick="resetKeybinds()" style="padding:7px 16px;background:var(--bg3);color:#96989d;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font)">↺ Сбросить на стандартные</button>
+        </div>
+        <div id="kbRebindHint" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(88,101,242,.15);border:1px solid rgba(88,101,242,.3);border-radius:8px;font-size:12px;color:#8ea1e1">Нажмите любую комбинацию клавиш...</div>
+      </div>
+
+      <!-- LANGUAGE -->
+      <div class="s-page" id="spage-language">
+        <div class="s-title">Язык интерфейса</div>
+        <div class="s-subtitle">Выберите язык отображения</div>
+        <div class="s-section">
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+            <div class="s-lang-opt act" id="lang-ru" onclick="setLanguage('ru',this)"><span style="font-size:20px">🇷🇺</span><div><div style="font-weight:700">Русский</div><div style="font-size:11px;color:#72767d">Текущий</div></div></div>
+            <div class="s-lang-opt" id="lang-en" onclick="setLanguage('en',this)"><span style="font-size:20px">🇬🇧</span><div><div style="font-weight:700">English</div><div style="font-size:11px;color:#72767d">Coming soon</div></div></div>
+            <div class="s-lang-opt" id="lang-de" onclick="setLanguage('de',this)"><span style="font-size:20px">🇩🇪</span><div><div style="font-weight:700">Deutsch</div><div style="font-size:11px;color:#72767d">Скоро</div></div></div>
+            <div class="s-lang-opt" id="lang-uk" onclick="setLanguage('uk',this)"><span style="font-size:20px">🇺🇦</span><div><div style="font-weight:700">Українська</div><div style="font-size:11px;color:#72767d">Скоро</div></div></div>
           </div>
         </div>
       </div>
@@ -2004,80 +2181,323 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
 
 <script>
 // ══════════════════════════════════════
-// SETTINGS
+// SETTINGS — full implementation
 // ══════════════════════════════════════
+
+// ── Keybinds state ──
+const DEFAULT_KB={mic:'ctrl+m',deaf:'ctrl+d',screen:'ctrl+shift+s',leave:'ctrl+shift+d',settings:'ctrl+,'};
+let keybinds={...DEFAULT_KB};
+let kbRebinding=null;
+
+function loadAllSettings(){
+  // Audio
+  const load=(k,id,def)=>{const v=localStorage.getItem(k);if(v!==null&&document.getElementById(id))document.getElementById(id).checked=v==='1';};
+  load('vl_noise','sNoise');load('vl_echo','sEcho');load('vl_agc','sAGC');load('vl_vad','sVAD');
+  const thresh=localStorage.getItem('vl_thresh');
+  if(thresh){const s=document.getElementById('sVADThresh');const v=document.getElementById('sVADVal');if(s)s.value=thresh;if(v)v.textContent=thresh;}
+
+  // Appearance
+  const accent=localStorage.getItem('vl_accent')||'#5865f2';
+  applyAccentColor(accent,false);
+  document.querySelectorAll('.s-accent-opt').forEach(el=>{el.classList.toggle('act',el.dataset.color===accent);});
+  document.getElementById('sAccentCustom').value=accent;
+  const fs=localStorage.getItem('vl_fontsize')||'13';
+  document.getElementById('sFontSize').value=fs;
+  document.getElementById('sFontSizeVal').textContent=fs+'px';
+  document.documentElement.style.fontSize=fs+'px';
+  const compact=localStorage.getItem('vl_compact')==='1';
+  document.getElementById('sCompact').checked=compact;
+  if(compact) document.body.classList.add('compact');
+
+  // Notifications
+  const nload=(k,id)=>{const v=localStorage.getItem(k);if(v!==null&&document.getElementById(id))document.getElementById(id).checked=v==='1';};
+  nload('vl_nring','sRingSound');nload('vl_nmsg','sMsgSound');nload('vl_njoin','sJoinSound');
+  nload('vl_nleave','sLeaveSound');nload('vl_nmention','sMentionSound');nload('vl_ntoasts','sToasts');nload('vl_ndmonly','sDMOnly');
+  const nvol=localStorage.getItem('vl_notifall')||'70';
+  const nvEl=document.getElementById('sNotifVol');const nvValEl=document.getElementById('sNotifVolVal');
+  if(nvEl)nvEl.value=nvol;if(nvValEl)nvValEl.textContent=nvol+'%';
+  const snd=localStorage.getItem('vl_notifsnd')||'default';
+  document.querySelectorAll('.s-sound-opt').forEach(el=>el.classList.toggle('act',el.id==='ssnd-'+snd));
+
+  // Privacy
+  nload('vl_showonline','sShowOnline');nload('vl_showact','sShowActivity');
+  nload('vl_allowdm','sAllowDM');nload('vl_allowfr','sAllowFriendReq');
+
+  // Keybinds
+  try{const kb=JSON.parse(localStorage.getItem('vl_keybinds')||'{}');keybinds={...DEFAULT_KB,...kb};}catch(e){}
+  renderKeybinds();
+
+  // Status
+  const statusTxt=localStorage.getItem('vl_status_text')||'';
+  const statusEmoji=localStorage.getItem('vl_status_emoji')||'😊';
+  const stEl=document.getElementById('sStatusText');const emEl=document.getElementById('sStatusEmojiBtn');
+  if(stEl)stEl.value=statusTxt;if(emEl)emEl.textContent=statusEmoji;
+  updateStatusPreview();
+
+  // Language
+  const lang=localStorage.getItem('vl_lang')||'ru';
+  document.querySelectorAll('.s-lang-opt').forEach(el=>el.classList.toggle('act',el.id==='lang-'+lang));
+
+  // Animations
+  const anim=localStorage.getItem('vl_animations');
+  if(anim==='0'){document.getElementById('sAnimations').checked=false;document.body.classList.add('no-animations');}
+}
+
 window.openSettings=function(){
-  // Populate profile fields with current user data
   const nameEl=document.getElementById('sProfileName');
   const tagEl=document.getElementById('sProfileTag');
-  if(nameEl&&ME) nameEl.textContent=ME.name||'—';
-  if(tagEl&&ME) tagEl.textContent='#'+((ME.tag||'0000'));
-  // Load saved audio settings
-  const ns=localStorage.getItem('vl_noise');
-  const ec=localStorage.getItem('vl_echo');
-  const agc=localStorage.getItem('vl_agc');
-  const vad=localStorage.getItem('vl_vad');
-  const thresh=localStorage.getItem('vl_thresh');
-  if(ns!==null) document.getElementById('sNoise').checked=ns==='1';
-  if(ec!==null) document.getElementById('sEcho').checked=ec==='1';
-  if(agc!==null) document.getElementById('sAGC').checked=agc==='1';
-  if(vad!==null) document.getElementById('sVAD').checked=vad==='1';
-  if(thresh!==null){
-    const sl=document.getElementById('sVADThresh');
-    const vl=document.getElementById('sVADVal');
-    if(sl) sl.value=thresh;
-    if(vl) vl.textContent=thresh;
-  }
+  if(nameEl&&window.ME) nameEl.textContent=ME.name||'—';
+  if(tagEl&&window.ME) tagEl.textContent='#'+(ME.tag||'0000');
+  loadAllSettings();
   document.getElementById('settingsBg').style.display='flex';
-  showSPage('profile', document.querySelector('.s-nav-item'));
+  showSPage('profile',document.querySelector('.s-nav-item'));
 };
 
 window.closeSettings=function(){
   document.getElementById('settingsBg').style.display='none';
+  if(kbRebinding){stopRebind();} 
 };
 
-window.showSPage=function(id, btn){
+window.showSPage=function(id,btn){
   document.querySelectorAll('.s-page').forEach(p=>p.style.display='none');
   document.querySelectorAll('.s-nav-item').forEach(b=>b.classList.remove('act'));
   const page=document.getElementById('spage-'+id);
-  if(page) page.style.display='block';
-  if(btn) btn.classList.add('act');
+  if(page)page.style.display='block';
+  if(btn)btn.classList.add('act');
 };
 
+// ── Audio settings ──
 window.saveAudioSettings=function(){
-  const noise=document.getElementById('sNoise')?.checked;
-  const echo=document.getElementById('sEcho')?.checked;
-  const agc=document.getElementById('sAGC')?.checked;
-  const vad=document.getElementById('sVAD')?.checked;
-  const thresh=document.getElementById('sVADThresh')?.value;
-  localStorage.setItem('vl_noise', noise?'1':'0');
-  localStorage.setItem('vl_echo', echo?'1':'0');
-  localStorage.setItem('vl_agc', agc?'1':'0');
-  localStorage.setItem('vl_vad', vad?'1':'0');
-  if(thresh) localStorage.setItem('vl_thresh', thresh);
+  localStorage.setItem('vl_noise',document.getElementById('sNoise')?.checked?'1':'0');
+  localStorage.setItem('vl_echo',document.getElementById('sEcho')?.checked?'1':'0');
+  localStorage.setItem('vl_agc',document.getElementById('sAGC')?.checked?'1':'0');
+  localStorage.setItem('vl_vad',document.getElementById('sVAD')?.checked?'1':'0');
+  const t=document.getElementById('sVADThresh')?.value;
+  if(t)localStorage.setItem('vl_thresh',t);
   toast('Настройки','⚙','Сохранено','success');
 };
 
+// ── Appearance ──
+function applyAccentColor(color,save=true){
+  document.documentElement.style.setProperty('--accent',color);
+  document.documentElement.style.setProperty('--accent2',color+'cc');
+  if(save)localStorage.setItem('vl_accent',color);
+}
+window.setAccentColor=function(color,btn){
+  applyAccentColor(color);
+  document.querySelectorAll('.s-accent-opt').forEach(el=>el.classList.toggle('act',el.dataset.color===color));
+  document.getElementById('sAccentCustom').value=color;
+};
+window.setFontSize=function(v){
+  document.documentElement.style.fontSize=v+'px';
+  document.getElementById('sFontSizeVal').textContent=v+'px';
+  localStorage.setItem('vl_fontsize',v);
+};
+window.applyCompact=function(on){
+  document.body.classList.toggle('compact',on);
+  localStorage.setItem('vl_compact',on?'1':'0');
+};
+window.applyAnimations=function(on){
+  document.body.classList.toggle('no-animations',!on);
+  localStorage.setItem('vl_animations',on?'1':'0');
+};
+window.setTheme=function(){toast('Тема','🎨','Только тёмная тема','info');};
+
+// ── Notifications ──
+window.saveNotifSettings=function(){
+  const ids=['sRingSound','sMsgSound','sJoinSound','sLeaveSound','sMentionSound','sToasts','sDMOnly'];
+  const keys=['vl_nring','vl_nmsg','vl_njoin','vl_nleave','vl_nmention','vl_ntoasts','vl_ndmonly'];
+  ids.forEach((id,i)=>{const el=document.getElementById(id);if(el)localStorage.setItem(keys[i],el.checked?'1':'0');});
+  const vol=document.getElementById('sNotifVol')?.value;
+  if(vol)localStorage.setItem('vl_notifall',vol);
+};
+window.selectNotifSound=function(snd,btn){
+  document.querySelectorAll('.s-sound-opt').forEach(el=>el.classList.remove('act'));
+  if(btn)btn.classList.add('act');
+  localStorage.setItem('vl_notifsnd',snd);
+  playNotifPreview(snd);
+};
+function playNotifPreview(snd){
+  if(snd==='none')return;
+  try{
+    const ctx=new AudioContext();
+    const o=ctx.createOscillator();
+    const g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    const vol=(parseInt(localStorage.getItem('vl_notifall')||'70')/100)*0.3;
+    g.gain.setValueAtTime(vol,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+(snd==='ping'?.15:snd==='soft'?.4:.25));
+    o.frequency.setValueAtTime(snd==='ping'?1200:snd==='soft'?440:880,ctx.currentTime);
+    if(snd==='default'){o.frequency.setValueAtTime(880,ctx.currentTime);o.frequency.setValueAtTime(1100,ctx.currentTime+.1);}
+    o.start(ctx.currentTime);
+    o.stop(ctx.currentTime+(snd==='ping'?.15:snd==='soft'?.4:.3));
+  }catch(e){}
+}
+
+// ── Custom status ──
+window.updateStatusPreview=function(){
+  const txt=document.getElementById('sStatusText')?.value||'';
+  const emoji=document.getElementById('sStatusEmojiBtn')?.textContent||'😊';
+  const prev=document.getElementById('sStatusPreview');
+  if(!prev)return;
+  if(txt){prev.style.display='block';prev.textContent=emoji+' '+txt;}
+  else prev.style.display='none';
+};
+window.toggleEmojiPicker=function(){
+  const p=document.getElementById('sEmojiPicker');
+  if(!p)return;
+  p.style.display=p.style.display==='flex'?'none':'flex';
+};
+window.pickEmoji=function(e){
+  const btn=document.getElementById('sStatusEmojiBtn');
+  if(btn)btn.textContent=e;
+  const p=document.getElementById('sEmojiPicker');
+  if(p)p.style.display='none';
+  updateStatusPreview();
+};
+window.saveCustomStatus=function(){
+  const txt=document.getElementById('sStatusText')?.value||'';
+  const emoji=document.getElementById('sStatusEmojiBtn')?.textContent||'😊';
+  localStorage.setItem('vl_status_text',txt);
+  localStorage.setItem('vl_status_emoji',emoji);
+  const activity=txt?(emoji+' '+txt):'';
+  if(window.wsSend&&window.myUid){wsSend({type:'status',status:localStorage.getItem('vl_my_status')||'online',activity});}
+  toast('Статус','✏️',txt?'Статус установлен':'Статус очищен','success');
+};
+window.clearCustomStatus=function(){
+  const stEl=document.getElementById('sStatusText');
+  if(stEl)stEl.value='';
+  localStorage.removeItem('vl_status_text');
+  localStorage.removeItem('vl_status_emoji');
+  const emojiBtn=document.getElementById('sStatusEmojiBtn');
+  if(emojiBtn)emojiBtn.textContent='😊';
+  updateStatusPreview();
+  if(window.wsSend)wsSend({type:'status',status:localStorage.getItem('vl_my_status')||'online',activity:''});
+  toast('Статус','✏️','Статус очищен','info');
+};
+window.setMyStatus=function(s,btn){
+  document.querySelectorAll('.s-status-opt').forEach(el=>el.classList.remove('act'));
+  if(btn)btn.classList.add('act');
+  localStorage.setItem('vl_my_status',s);
+  const activity=localStorage.getItem('vl_status_text')
+    ?(localStorage.getItem('vl_status_emoji')||'😊')+' '+localStorage.getItem('vl_status_text'):'';
+  if(window.wsSend)wsSend({type:'status',status:s,activity});
+  toast('Статус','🟢','Статус обновлён','success');
+};
+
+// ── Privacy ──
+window.savePrivacySettings=function(){
+  ['sShowOnline','sShowActivity','sAllowDM','sAllowFriendReq'].forEach((id,i)=>{
+    const keys=['vl_showonline','vl_showact','vl_allowdm','vl_allowfr'];
+    const el=document.getElementById(id);if(el)localStorage.setItem(keys[i],el.checked?'1':'0');
+  });
+  const cf=document.getElementById('sCallFrom')?.value;
+  if(cf)localStorage.setItem('vl_callfrom',cf);
+  toast('Настройки','🔒','Сохранено','success');
+};
+
+// ── Keybinds ──
+function renderKeybinds(){
+  Object.entries(keybinds).forEach(([action,combo])=>{
+    const el=document.getElementById('kb-'+action);
+    if(el)el.textContent=formatCombo(combo);
+  });
+}
+function formatCombo(combo){
+  return combo.split('+').map(k=>{
+    if(k==='ctrl')return'Ctrl';if(k==='shift')return'Shift';if(k==='alt')return'Alt';
+    return k.toUpperCase();
+  }).join('+');
+}
+window.startRebind=function(action,el){
+  if(kbRebinding){stopRebind();}
+  kbRebinding={action,el};
+  el.classList.add('listening');
+  el.textContent='...';
+  document.getElementById('kbRebindHint').style.display='block';
+};
+function stopRebind(){
+  if(!kbRebinding)return;
+  kbRebinding.el.classList.remove('listening');
+  kbRebinding=null;
+  document.getElementById('kbRebindHint').style.display='none';
+  renderKeybinds();
+}
+document.addEventListener('keydown',function(e){
+  if(!kbRebinding)return;
+  if(e.key==='Escape'){stopRebind();return;}
+  e.preventDefault();
+  const parts=[];
+  if(e.ctrlKey)parts.push('ctrl');
+  if(e.shiftKey)parts.push('shift');
+  if(e.altKey)parts.push('alt');
+  const k=e.key.toLowerCase();
+  if(!['control','shift','alt','meta'].includes(k))parts.push(k);
+  if(parts.length===0)return;
+  const combo=parts.join('+');
+  keybinds[kbRebinding.action]=combo;
+  localStorage.setItem('vl_keybinds',JSON.stringify(keybinds));
+  toast('Клавиши','⌨️',formatCombo(combo)+' назначено','success');
+  stopRebind();
+},true);
+
+// Override global keydown to use keybinds map
+document.addEventListener('keydown',function(e){
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  if(kbRebinding)return;
+  const parts=[];
+  if(e.ctrlKey)parts.push('ctrl');
+  if(e.shiftKey)parts.push('shift');
+  if(e.altKey)parts.push('alt');
+  const k=e.key.toLowerCase();
+  if(!['control','shift','alt','meta'].includes(k))parts.push(k);
+  const combo=parts.join('+');
+  if(combo===keybinds.mic){e.preventDefault();if(window.toggleMic)toggleMic();}
+  if(combo===keybinds.deaf){e.preventDefault();if(window.toggleDeaf)toggleDeaf();}
+  if(combo===keybinds.screen){e.preventDefault();if(window.toggleScreenShare)toggleScreenShare();}
+  if(combo===keybinds.leave){e.preventDefault();if(window.leaveVoice)leaveVoice();}
+  if(combo===keybinds.settings){e.preventDefault();openSettings();}
+});
+
+window.resetKeybinds=function(){
+  keybinds={...DEFAULT_KB};
+  localStorage.removeItem('vl_keybinds');
+  renderKeybinds();
+  toast('Клавиши','⌨️','Сброшено','info');
+};
+
+// ── Language ──
+window.setLanguage=function(lang,el){
+  document.querySelectorAll('.s-lang-opt').forEach(e=>e.classList.remove('act'));
+  if(el)el.classList.add('act');
+  localStorage.setItem('vl_lang',lang);
+  if(lang!=='ru')toast('Язык','🌐','Пока только русский','info');
+  else toast('Язык','🌐','Русский выбран','success');
+};
+
+// ── Confirm logout ──
 window.confirmLogout=function(){
-  if(confirm('Выйти из аккаунта? Страница перезагрузится.')) {
-    localStorage.removeItem('vl_name');
-    localStorage.removeItem('vl_color');
+  if(confirm('Выйти из аккаунта? Страница перезагрузится.')){
+    ['vl_name','vl_color','vl_uid'].forEach(k=>localStorage.removeItem(k));
     location.reload();
   }
 };
 
-window.setTheme=function(t){
-  toast('Тема','🎨','Только тёмная тема поддерживается','info');
-};
-
-// Init: hide all s-pages, show first
+// ── Init ──
 document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.s-page').forEach(p=>p.style.display='none');
+  // Apply saved appearance on load
+  const accent=localStorage.getItem('vl_accent');
+  if(accent)applyAccentColor(accent,false);
+  const fs=localStorage.getItem('vl_fontsize');
+  if(fs)document.documentElement.style.fontSize=fs+'px';
+  if(localStorage.getItem('vl_compact')==='1')document.body.classList.add('compact');
+  if(localStorage.getItem('vl_animations')==='0')document.body.classList.add('no-animations');
+  try{const kb=JSON.parse(localStorage.getItem('vl_keybinds')||'{}');keybinds={...DEFAULT_KB,...kb};}catch(e){}
 });
 
-// Escape closes settings
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape') closeSettings();
+  if(e.key==='Escape'&&document.getElementById('settingsBg')?.style.display==='flex')closeSettings();
 });
 </script>
 
