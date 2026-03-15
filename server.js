@@ -232,6 +232,15 @@ wss.on('connection', ws => {
         if(u?.room){const r=rooms.get(u.room);if(r){r.delete(me);if(!r.size)rooms.delete(u.room);}broadcastRoom(u.room,{type:'peer_left',uid:me});u.room=null;}
         broadcast({type:'voice_update',rooms:roomList()}); break;
       }
+      case 'typing': {
+        // Relay typing to target (DM or server channel)
+        if(d.ctx==='dm' && d.target){
+          send(d.target, {type:'typing',uid:me,ctx:'dm',name:users.get(me)?.name});
+        } else if(d.ctx==='srv'){
+          broadcast({type:'typing',uid:me,ctx:'srv',target:d.target,name:users.get(me)?.name}, me);
+        }
+        break;
+      }
       case 'speaking': {
         const u=users.get(me); if(u) u.speaking=d.speaking;
         if(u?.room) broadcastRoom(u.room,{type:'speaking',uid:me,speaking:d.speaking},me); break;

@@ -430,13 +430,15 @@ input,textarea{font-family:var(--font)}
 .s-page.vis{display:block}
 .s-title{font-size:20px;font-weight:700;color:#fff;margin-bottom:4px}
 .s-subtitle{font-size:13px;color:#72767d;margin-bottom:24px}
-.s-section{margin-bottom:28px}
-.s-section-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#72767d;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06)}
-.s-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.s-section{margin-bottom:24px}
+.s-section-title{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#72767d;font-weight:700;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.06)}
+.s-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:12px;min-width:0}
 .s-row:last-child{border-bottom:none}
-.s-row-info{flex:1;margin-right:16px}
-.s-row-label{font-size:14px;font-weight:600;color:#dcddde;margin-bottom:2px}
-.s-row-desc{font-size:12px;color:#72767d;line-height:1.5}
+.s-row-info{flex:1;min-width:0;margin-right:8px}
+.s-row-label{font-size:13px;font-weight:600;color:#dcddde;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-row-desc{font-size:11px;color:#72767d;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.s-slider-wrap{display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:120px}
+.s-slider-val{font-size:11px;color:#72767d;min-width:32px;text-align:right;flex-shrink:0}
 .s-toggle{position:relative;width:44px;height:24px;flex-shrink:0}
 .s-toggle input{opacity:0;width:0;height:0}
 .s-toggle-slider{position:absolute;inset:0;background:#4f545c;border-radius:12px;cursor:pointer;transition:background .2s}
@@ -793,9 +795,9 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
     </div>
     <div class="vbar-users" id="vbarUsers"></div>
     <div class="vbar-btns">
-      <button class="vb-btn" id="vbMic" onclick="toggleMic()" title="Микрофон">🎙</button>
-      <button class="vb-btn" id="vbSnd" onclick="toggleDeaf()" title="Звук">🎧</button>
-      <button class="vb-btn" onclick="toggleScreenShare()" title="Демонстрация">🖥</button>
+      <button class="vb-btn" id="vbMic" onclick="toggleMic()" title="Микрофон"><svg width="14" height="14" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      <button class="vb-btn" id="vbSnd" onclick="toggleDeaf()" title="Звук"><svg width="14" height="14" viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3.314 2.686-6 6-6s6 2.686 6 6v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><rect x="1.5" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/><rect x="13" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/></svg></button>
+      <button class="vb-btn" onclick="toggleScreenShare()" title="Демонстрация"><svg width="14" height="14" viewBox="0 0 18 18" fill="none"><rect x="1" y="3" width="16" height="11" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="5" y="6" width="8" height="5" rx=".8" fill="currentColor"/></svg></button>
       <button class="vb-leave" onclick="leaveVoice()" title="Выйти">📵</button>
     </div>
   </div>
@@ -919,18 +921,22 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
   <div class="cw-body" id="cwBody"></div>
   <div class="cw-bar">
     <button class="cw-btn cw-mic" id="cwMicBtn" onclick="toggleMic()" title="Микрофон (M)">
-      <span class="cw-btn-icon">🎙</span><span class="cw-btn-label" id="cwMicLabel">Микрофон</span>
+      <span class="cw-btn-icon" id="cwMicIcon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="6.5" y1="17" x2="11.5" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+      <span class="cw-btn-label" id="cwMicLabel">Микрофон</span>
     </button>
     <button class="cw-btn cw-deaf" id="cwDeafBtn" onclick="toggleDeaf()" title="Звук">
-      <span class="cw-btn-icon">🎧</span><span class="cw-btn-label" id="cwDeafLabel">Звук</span>
+      <span class="cw-btn-icon" id="cwDeafIcon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3.314 2.686-6 6-6s6 2.686 6 6v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><rect x="1.5" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/><rect x="13" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/></svg></span>
+      <span class="cw-btn-label" id="cwDeafLabel">Звук</span>
     </button>
     <button class="cw-btn cw-screen-btn" id="cwScreenBtn" onclick="toggleScreenShare()" title="Демонстрация экрана">
-      <span class="cw-btn-icon">🖥</span><span class="cw-btn-label">Экран</span>
+      <span class="cw-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1" y="3" width="16" height="11" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M6 14l1.5 2.5M12 14l-1.5 2.5M5 16.5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="6" y="6" width="6" height="5" rx=".8" fill="currentColor"/></svg></span>
+      <span class="cw-btn-label">Экран</span>
     </button>
     <button class="cw-btn" id="cwParticipantsBtn" onclick="toggleCWParticipants()" title="Участники" style="background:#404249;color:#fff">
-      <span class="cw-btn-icon">👥</span><span class="cw-btn-label" id="cwPartCount">Участники</span>
+      <span class="cw-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="7" cy="6" r="3" fill="currentColor"/><circle cx="13" cy="7" r="2.2" fill="currentColor" opacity=".7"/><path d="M1 15c0-3.314 2.686-5 6-5s6 1.686 6 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><path d="M13 10c1.657 0 3 .895 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".7"/></svg></span>
+      <span class="cw-btn-label" id="cwPartCount">Участники</span>
     </button>
-    <button class="cw-btn cw-end" onclick="leaveVoice()" title="Завершить звонок">📵</button>
+    <button class="cw-btn cw-end" onclick="leaveVoice()" title="Завершить звонок"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 10.5c0-1 .7-2.2 2-3 1.5-.9 3.5-1.5 5-1.5s3.5.6 5 1.5c1.3.8 2 2 2 3l-2.5.5c-.3-1-1.5-1.8-2.5-2-.5-.1-1-.2-2-.2s-1.5.1-2 .2c-1 .2-2.2 1-2.5 2L2 10.5z" fill="currentColor"/><line x1="5" y1="13" x2="2" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="13" x2="16" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
   </div>
 </div>
 
@@ -1137,6 +1143,9 @@ function handleWS(d){
       cleanupPeerAudio(d.uid);
       if(inVoice)updateCallWindow();
       break;
+    case 'typing':
+      showTypingIndicator(d.uid, d.ctx, d.name);
+      break;
     case 'speaking':
       if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][d.uid])
         vcRooms[currentVoiceRoom][d.uid].speaking=d.speaking;
@@ -1278,8 +1287,9 @@ async function startMicRelay(){
     wsSendBinary(i16.buffer);
 
     const spk=gateOpen&&rms>thresh*0.3;
-    const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking);
+    const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking)||window._mySpeaking;
     if(spk!==prevSpk){
+      window._mySpeaking=spk;
       wsSend({type:'speaking',speaking:spk});
       if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
         vcRooms[currentVoiceRoom][myUid].speaking=spk;
@@ -1546,7 +1556,7 @@ window.openDM=function(uid){
         <input type="file" id="dmFileInp" style="display:none" onchange="sendFile(this,'dm','${uid}')">
         <button class="inp-btn" onclick="document.getElementById('dmFileInp').click()" title="Прикрепить файл" style="font-size:18px">+</button>
         <textarea class="chat-inp" id="dmInp" placeholder="Написать @${esc(u.name)}..." rows="1"
-          oninput="autoResize(this)" onkeydown="handleKey(event,'dm','${uid}')"></textarea>
+          oninput="autoResize(this);emitTyping('dm','${uid}')" onkeydown="handleKey(event,'dm','${uid}')"></textarea>
         <button class="inp-btn" onclick="startVoiceMsgDM('${uid}')" id="dmVoiceBtn" title="Голосовое сообщение">🎤</button>
         <button class="inp-btn">😊</button>
         <button class="inp-send" onclick="sendDM('${uid}')">➤</button>
@@ -1739,7 +1749,7 @@ window.openSrvCh=function(btn,ch,desc){
         <input type="file" id="srvFileInp" style="display:none" onchange="sendFile(this,'srv','${ch}')">
         <button class="inp-btn" onclick="document.getElementById('srvFileInp').click()" title="Прикрепить файл" style="font-size:18px">+</button>
         <textarea class="chat-inp" id="srvInp" placeholder="Написать в #${ch}..." rows="1"
-          oninput="autoResize(this)" onkeydown="handleKey(event,'srv',null)"></textarea>
+          oninput="autoResize(this);emitTyping('srv',currentSrvCh)" onkeydown="handleKey(event,'srv',null)"></textarea>
         <button class="inp-btn" onclick="startVoiceMsgSrv('${ch}')" id="srvVoiceBtn" title="Голосовое сообщение">🎤</button>
         <button class="inp-btn">😊</button>
         <button class="inp-send" onclick="sendSrv('${ch}')">➤</button>
@@ -1913,6 +1923,29 @@ window.scrollToMsg=function(ts){
 window.deleteMsg=function(msgId){
   document.getElementById(msgId)?.remove();
 };
+
+// ── Typing indicator ──
+const _typingTimers={};
+const _typingUsers={};
+window.emitTyping=function(ctx,target){
+  const key=ctx+':'+target;
+  clearTimeout(_typingTimers[key]);
+  wsSend({type:'typing',ctx,target,name:ME.name});
+  _typingTimers[key]=setTimeout(()=>{}, 3000);
+};
+function showTypingIndicator(uid,ctx,name){
+  if(uid===myUid) return;
+  const elId=(ctx==='dm'&&uid===currentDMId)||(ctx==='dm'&&currentDMId===uid)?'dmTyping':
+             (ctx==='srv'&&currentView==='srv:'+currentSrvCh)?'srvTyping':null;
+  if(!elId) return;
+  const el=document.getElementById(elId);if(!el)return;
+  _typingUsers[elId]=_typingUsers[elId]||{};
+  _typingUsers[elId][uid]=name;
+  const names=Object.values(_typingUsers[elId]);
+  el.innerHTML=`<span class="t-dots"><span></span><span></span><span></span></span><span>${names.slice(0,3).join(', ')} печатает${names.length>1?'...':'...'}</span>`;
+  clearTimeout(_typingUsers[elId+'_t']);
+  _typingUsers[elId+'_t']=setTimeout(()=>{delete _typingUsers[elId][uid];if(Object.keys(_typingUsers[elId]||{}).length===0)el.innerHTML='';},3000);
+}
 
 function processCmd(cmd){
   const c=cmd.toLowerCase().trim();
@@ -2122,6 +2155,44 @@ function stopScreenShare(){
   updateCallWindow();
   toast('Демонстрация','🖥','Остановлена','info');
 }
+
+// ── Screen fullscreen toggle ──
+window.toggleScreenFullscreen=function(uid){
+  const tile=document.getElementById('screentile_'+uid);
+  if(!tile) return;
+  if(!document.fullscreenElement){
+    tile.requestFullscreen().catch(()=>{
+      // Fallback: expand via CSS overlay
+      tile.style.cssText='position:fixed;inset:0;z-index:9999;border-radius:0;border:none;';
+      tile.dataset.expanded='1';
+      const closeBtn=document.createElement('button');
+      closeBtn.textContent='✕ Закрыть';
+      closeBtn.style.cssText='position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;z-index:10000';
+      closeBtn.onclick=()=>{tile.style.cssText='';tile.dataset.expanded='';closeBtn.remove();};
+      tile.appendChild(closeBtn);
+    });
+  } else {
+    document.exitFullscreen();
+  }
+};
+
+// ── Screen audio toggle (play canvas audio via AudioContext) ──
+const _screenAudioCtxMap=new Map();
+window.toggleScreenAudio=function(uid){
+  const btn=document.getElementById('scrAudio_'+uid);
+  if(_screenAudioCtxMap.has(uid)){
+    // Mute
+    const {gainNode}=_screenAudioCtxMap.get(uid);
+    gainNode.gain.value=0;
+    _screenAudioCtxMap.delete(uid);
+    if(btn) btn.textContent='🔇';
+    toast('Демо','🔇','Звук демки выкл','info');
+  } else {
+    // Already playing through remoteCtx gainNode — just show state
+    if(btn) btn.textContent='🔊';
+    toast('Демо','🔊','Звук демки вкл — слышен через голосовой','info');
+  }
+};
 
 // ── Canvas-JPEG screen relay (no WebRTC/TURN needed) ──
 function startScreenRelay(){
@@ -2443,11 +2514,18 @@ function updateCallWindow(){
     if((body.dataset.screenIds||'')!==newIds){
       body.dataset.screenIds=newIds;
       const tiles=activeScreens.map(s=>`
-        <div style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:10px;overflow:hidden;background:#000">
+        <div id="screentile_${s.uid}" style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:10px;overflow:hidden;background:#000">
           ${s.isMe
             ?`<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
             :`<canvas id="scrcanvas_${s.uid}" style="width:100%;height:100%;object-fit:contain;display:block;background:#000"></canvas>`}
-          <div style="position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,.7);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''} ${s.isMe?'<span id="screenFpsIndicator" style="color:#23a55a;font-size:10px"></span>':''}</div>
+          <div style="position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,.7);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff;display:flex;align-items:center;gap:8px">
+            <span>🖥 ${esc(s.name)}${s.isMe?' (вы)':''}</span>
+            ${s.isMe?'<span id="screenFpsIndicator" style="color:#23a55a;font-size:10px"></span>':''}
+          </div>
+          <div style="position:absolute;top:8px;right:8px;display:flex;gap:4px">
+            ${!s.isMe?`<button onclick="toggleScreenAudio('${s.uid}')" id="scrAudio_${s.uid}" title="Звук демки" style="background:rgba(0,0,0,.6);border:none;border-radius:6px;padding:4px 8px;color:#fff;font-size:12px;cursor:pointer">🔊</button>`:''}
+            <button onclick="toggleScreenFullscreen('${s.uid}')" title="Развернуть" style="background:rgba(0,0,0,.6);border:none;border-radius:6px;padding:4px 8px;color:#fff;font-size:12px;cursor:pointer">⛶</button>
+          </div>
         </div>`).join('');
       body.innerHTML=tiles+'<div id="cwStrip" style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap"></div>';
       const v=document.getElementById('scrvid_'+myUid);
@@ -2471,7 +2549,8 @@ function updateCallWindow(){
     const fontSize=count<=1?24:count<=2?20:count<=4?17:13;
     body.style.cssText=`display:grid;grid-template-columns:repeat(${cols},1fr);grid-auto-rows:1fr;gap:6px;padding:12px;`;
     body.innerHTML=allUsers.map(u=>{
-      const isMic=u.isMe&&micMuted;const spk=u.speaking&&!isMic;
+      const isMic=u.isMe&&micMuted;
+      const spk=(u.isMe ? !!window._mySpeaking : u.speaking)&&!isMic;
       return `<div class="cw-participant${spk?' spk':''}">
         <div class="cw-av" style="background:${u.color};width:${avSize}px;height:${avSize}px;font-size:${fontSize}px;${spk?'box-shadow:0 0 0 3px rgba(35,165,90,.7),0 0 16px rgba(35,165,90,.3)':''}">${u.init}</div>
         <div class="cw-name">${u.isMe?'🎙 ':''}${esc(u.name||'?')}${isMic?' 🔇':''}</div>
@@ -2479,7 +2558,7 @@ function updateCallWindow(){
     }).join('');
   }
 
-  // Sync button states
+  // Sync button states with SVG icons
   const mb=document.getElementById('cwMicBtn');
   const db=document.getElementById('cwDeafBtn');
   const sb=document.getElementById('cwScreenBtn');
@@ -2487,10 +2566,12 @@ function updateCallWindow(){
   const dl=document.getElementById('cwDeafLabel');
   if(mb) mb.classList.toggle('off',micMuted);
   if(ml) ml.textContent=micMuted?'Мут':'Микрофон';
-  const micIcon=mb?.querySelector('.cw-btn-icon');if(micIcon)micIcon.textContent=micMuted?'🔇':'🎙';
+  const micIcon=document.getElementById('cwMicIcon');
+  if(micIcon) micIcon.innerHTML=micMuted?`<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor" opacity=".4"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity=".4"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".4"/><line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`:`<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="6.5" y1="17" x2="11.5" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
   if(db) db.classList.toggle('off',deafMuted);
   if(dl) dl.textContent=deafMuted?'Глушение':'Звук';
-  const deafIcon=db?.querySelector('.cw-btn-icon');if(deafIcon)deafIcon.textContent=deafMuted?'🔕':'🎧';
+  const deafIcon=document.getElementById('cwDeafIcon');
+  if(deafIcon) deafIcon.innerHTML=deafMuted?`<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3.314 2.686-6 6-6s6 2.686 6 6v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity=".4"/><rect x="1.5" y="9" width="3.5" height="5" rx="1.5" fill="currentColor" opacity=".4"/><rect x="13" y="9" width="3.5" height="5" rx="1.5" fill="currentColor" opacity=".4"/><line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`:`<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3.314 2.686-6 6-6s6 2.686 6 6v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><rect x="1.5" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/><rect x="13" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/></svg>`;
   if(sb) sb.classList.toggle('on',screenSharing);
 }
 window.leaveVoice=async function(){
@@ -2638,12 +2719,14 @@ window.declineCall=function(){
 // ══════════════════════════════════════
 window.toggleMic=function(){
   micMuted=!micMuted;
-  const icon=micMuted?'🔇':'🎙';
-  const micBtnEl=document.getElementById('micBtn');if(micBtnEl){micBtnEl.textContent=icon;micBtnEl.classList.toggle('danger',micMuted);}
-  const vb=document.getElementById('vbMic');if(vb){vb.textContent=icon+' Mic';vb.classList.toggle('mut',micMuted);}
-  const cp=document.getElementById('cpMic');if(cp){cp.textContent=icon;cp.classList.toggle('muted',micMuted);}
-  const cwMic=document.getElementById('cwMicBtn');if(cwMic){cwMic.textContent=icon;cwMic.classList.toggle('off',micMuted);}
-  toast(micMuted?'Замьючен':'Размьючен',icon,'','info');
+  const svgIcon=micMuted?`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor" opacity=".4"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity=".4"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".4"/><line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`:`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="6.5" y1="17" x2="11.5" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  const micBtnEl=document.getElementById('micBtn');if(micBtnEl){micBtnEl.innerHTML=svgIcon;micBtnEl.classList.toggle('danger',micMuted);}
+  const vb=document.getElementById('vbMic');if(vb){vb.innerHTML=svgIcon+' Mic';vb.classList.toggle('mut',micMuted);}
+  const cp=document.getElementById('cpMic');if(cp){cp.innerHTML=svgIcon;cp.classList.toggle('muted',micMuted);}
+  const cwMicIcon=document.getElementById('cwMicIcon');if(cwMicIcon)cwMicIcon.innerHTML=micMuted?`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor" opacity=".4"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity=".4"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".4"/><line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`:`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="6.5" y1="17" x2="11.5" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  const cwMic=document.getElementById('cwMicBtn');if(cwMic){cwMic.classList.toggle('off',micMuted);}
+  const cwMicLbl=document.getElementById('cwMicLabel');if(cwMicLbl)cwMicLbl.textContent=micMuted?'Мут':'Микрофон';
+  toast(micMuted?'Замьючен':'Размьючен',micMuted?'🔇':'🎙','','info');
   // Reset speaking state when muting so animation stops
   if(micMuted){
     wsSend({type:'speaking',speaking:false});
@@ -2655,11 +2738,13 @@ window.toggleMic=function(){
 };
 window.toggleDeaf=function(){
   deafMuted=!deafMuted;
-  const icon=deafMuted?'🔕':'🎧';
-  ['deafBtn','vbSnd'].forEach(id=>{const b=document.getElementById(id);if(b){b.classList.toggle('danger',deafMuted);}});
-  const cp=document.getElementById('cpDeaf');if(cp){cp.textContent=icon;cp.classList.toggle('muted',deafMuted);}
-  const cwDeaf=document.getElementById('cwDeafBtn');if(cwDeaf){cwDeaf.classList.toggle('off',deafMuted);}
-  toast(deafMuted?'Наушники выключены':'Наушники включены',icon,'','info');
+  const hpIcon=deafMuted?`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3.314 2.686-6 6-6s6 2.686 6 6v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity=".4"/><rect x="1.5" y="9" width="3.5" height="5" rx="1.5" fill="currentColor" opacity=".4"/><rect x="13" y="9" width="3.5" height="5" rx="1.5" fill="currentColor" opacity=".4"/><line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`:`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3.314 2.686-6 6-6s6 2.686 6 6v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><rect x="1.5" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/><rect x="13" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/></svg>`;
+  ['deafBtn','vbSnd'].forEach(id=>{const b=document.getElementById(id);if(b){b.innerHTML=hpIcon;b.classList.toggle('danger',deafMuted);}});
+  const cp=document.getElementById('cpDeaf');if(cp){cp.innerHTML=hpIcon;cp.classList.toggle('muted',deafMuted);}
+  const cwDeafIcon=document.getElementById('cwDeafIcon');if(cwDeafIcon)cwDeafIcon.innerHTML=deafMuted?`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3.314 2.686-6 6-6s6 2.686 6 6v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity=".4"/><rect x="1.5" y="9" width="3.5" height="5" rx="1.5" fill="currentColor" opacity=".4"/><rect x="13" y="9" width="3.5" height="5" rx="1.5" fill="currentColor" opacity=".4"/><line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`:`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3.314 2.686-6 6-6s6 2.686 6 6v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><rect x="1.5" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/><rect x="13" y="9" width="3.5" height="5" rx="1.5" fill="currentColor"/></svg>`;
+  const cwDeaf=document.getElementById('cwDeafBtn');if(cwDeaf)cwDeaf.classList.toggle('off',deafMuted);
+  const cwDeafLbl=document.getElementById('cwDeafLabel');if(cwDeafLbl)cwDeafLbl.textContent=deafMuted?'Глушение':'Звук';
+  toast(deafMuted?'Наушники выключены':'Наушники включены',deafMuted?'🔕':'🎧','','info');
   // Deafening also mutes mic
   if(deafMuted&&!micMuted) toggleMic();
 };
