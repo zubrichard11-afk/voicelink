@@ -293,43 +293,41 @@ input,textarea{font-family:var(--font)}
 .ci-dec{background:var(--red);color:#fff}.ci-dec:hover{background:#c0282b;transform:scale(1.05)}
 
 
-/* CALL WINDOW */
-.cw{position:fixed;top:52px;right:0;width:340px;height:calc(100vh - 52px);background:#111217;z-index:250;display:none;flex-direction:column;border-left:1px solid rgba(255,255,255,.06)}
+/* CALL WINDOW — Discord style: participants grid top, controls bottom */
+.cw{position:fixed;top:0;right:0;width:360px;height:100vh;background:#111317;z-index:250;display:none;flex-direction:column;border-left:1px solid rgba(255,255,255,.07);box-shadow:-4px 0 24px rgba(0,0,0,.5)}
 .cw.vis{display:flex}
-.cw-top{display:flex;align-items:center;padding:10px 14px;background:rgba(0,0,0,.3);flex-shrink:0;gap:10px;border-bottom:1px solid rgba(255,255,255,.06)}
-.cw-title{font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;gap:6px}
-.cw-title::before{content:'';width:7px;height:7px;background:var(--green);border-radius:50%;flex-shrink:0;animation:pdot 2s ease-in-out infinite}
-.cw-subtitle{font-size:12px;color:rgba(255,255,255,.5)}
-.cw-pip{margin-left:auto;display:flex;gap:6px}
-.cw-pip-btn{width:28px;height:28px;border-radius:6px;border:none;background:rgba(255,255,255,.1);color:#fff;font-size:13px;cursor:pointer}
-.cw-pip-btn:hover{background:rgba(255,255,255,.2)}
-.cw-body{flex:1;display:flex;align-items:center;justify-content:center;gap:16px;padding:20px;flex-wrap:wrap;overflow:auto}
-.cw-participant{position:relative;background:#1e2029;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:2px solid transparent;transition:border-color .2s}
-.cw-participant.spk{border-color:#23a55a}
-.cw-participant.big{width:min(640px,70vw);height:min(360px,40vh)}
-.cw-participant.small{width:min(280px,30vw);height:min(180px,20vh)}
-.cw-participant.solo{width:min(480px,60vw);height:min(320px,50vh)}
-.cw-av{width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700}
+.cw-top{display:flex;align-items:center;padding:12px 16px;background:#0e1014;flex-shrink:0;gap:10px;border-bottom:1px solid rgba(255,255,255,.06);min-height:52px}
+.cw-title{font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;gap:7px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cw-title::before{content:'';width:8px;height:8px;background:var(--green);border-radius:50%;flex-shrink:0;animation:pdot 2s ease-in-out infinite}
+.cw-subtitle{font-size:11px;color:rgba(255,255,255,.4);white-space:nowrap}
+/* Participant grid — top area */
+.cw-body{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px;overflow-y:auto;flex:1;align-content:start}
+.cw-body::-webkit-scrollbar{width:3px}.cw-body::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+.cw-participant{position:relative;background:#1a1d27;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid transparent;transition:border-color .2s;aspect-ratio:1;min-height:0}
+.cw-participant.spk{border-color:#23a55a;box-shadow:0 0 0 1px rgba(35,165,90,.3)}
+.cw-participant.big,.cw-participant.solo{grid-column:1/-1;aspect-ratio:16/9}
+.cw-participant.small{}
+.cw-av{border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;width:56px;height:56px}
+.cw-participant.big .cw-av,.cw-participant.solo .cw-av{width:80px;height:80px;font-size:32px}
 .cw-screen{width:100%;height:100%;object-fit:contain;position:absolute;inset:0}
-.cw-name{position:absolute;bottom:8px;left:10px;font-size:12px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);padding:2px 8px;border-radius:8px;display:flex;align-items:center;gap:4px}
-.cw-muted{font-size:10px;color:#ed4245}
-.cw-bar{height:72px;background:#1a1d27;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;gap:12px;flex-shrink:0;padding:0 20px}
-.cw-btn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;font-size:20px;cursor:pointer;transition:all .15s;position:relative}
-.cw-btn-label{position:absolute;bottom:-18px;font-size:9px;white-space:nowrap;color:rgba(255,255,255,.6);left:50%;transform:translateX(-50%)}
-.cw-mic{background:#36393f;color:#fff}.cw-mic:hover{background:#4a4e59}.cw-mic.off{background:rgba(237,66,69,.2);color:#ed4245}
-.cw-deaf{background:#36393f;color:#fff}.cw-deaf:hover{background:#4a4e59}.cw-deaf.off{background:rgba(237,66,69,.2);color:#ed4245}
-.cw-screen-btn{background:#36393f;color:#fff}.cw-screen-btn:hover{background:#4a4e59}.cw-screen-btn.on{background:rgba(88,101,242,.3);color:#5865f2}
-.cw-end{background:#ed4245;color:#fff;width:52px;height:52px}.cw-end:hover{background:#c0282b;transform:scale(1.05)}
-.cw-vol-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
-.cw-vol-wrap input{width:80px;accent-color:#5865f2}
-.cw-vol-label{font-size:9px;color:rgba(255,255,255,.5)}
-.cw-participants-side{width:200px;background:rgba(0,0,0,.2);border-left:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;padding:12px;gap:8px;flex-shrink:0}
-.cw-side-title{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.4);margin-bottom:4px}
-.cw-side-user{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.05)}
-.cw-side-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
-.cw-side-name{font-size:12px;font-weight:600;flex:1}
-.cw-side-spk{width:8px;height:8px;border-radius:50%;background:#747f8d}
-.cw-side-spk.on{background:#23a55a;animation:pdot 1s ease-in-out infinite}
+.cw-name{font-size:11px;font-weight:600;color:rgba(255,255,255,.85);margin-top:6px;text-align:center;padding:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;position:static;background:none}
+/* Speaking glow ring */
+.cw-participant.spk .cw-av{box-shadow:0 0 0 3px rgba(35,165,90,.7)}
+.cw-participant.spk .cw-name::after{content:' ●';color:#23a55a}
+/* Controls bar at bottom — Discord style */
+.cw-bar{background:#0e1014;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;gap:10px;flex-shrink:0;padding:14px 16px}
+.cw-btn{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;font-size:19px;cursor:pointer;transition:all .15s;position:relative;flex-shrink:0}
+.cw-btn-label{position:absolute;bottom:-16px;font-size:9px;white-space:nowrap;color:rgba(255,255,255,.5);left:50%;transform:translateX(-50%)}
+.cw-mic{background:#2b2d31;color:#dcddde}.cw-mic:hover{background:#3c3f47}.cw-mic.off{background:rgba(237,66,69,.25);color:#ed4245;box-shadow:0 0 0 2px rgba(237,66,69,.4)}
+.cw-deaf{background:#2b2d31;color:#dcddde}.cw-deaf:hover{background:#3c3f47}.cw-deaf.off{background:rgba(237,66,69,.25);color:#ed4245;box-shadow:0 0 0 2px rgba(237,66,69,.4)}
+.cw-screen-btn{background:#2b2d31;color:#dcddde}.cw-screen-btn:hover{background:#3c3f47}.cw-screen-btn.on{background:rgba(88,101,242,.35);color:#5865f2;box-shadow:0 0 0 2px rgba(88,101,242,.5)}
+.cw-end{background:#ed4245;color:#fff;width:46px;height:46px}.cw-end:hover{background:#c0282b;transform:scale(1.05)}
+.cw-vol-wrap{display:flex;flex-direction:column;align-items:center;gap:3px}
+.cw-vol-wrap input{width:70px;accent-color:#5865f2}
+.cw-vol-label{font-size:9px;color:rgba(255,255,255,.4)}
+/* No more side panel — single column layout */
+.cw-participants-side{display:none}
+.cw-side-title,.cw-side-user,.cw-side-av,.cw-side-name,.cw-side-spk{display:none}
 
 
 /* SETTINGS */
@@ -889,24 +887,22 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
   <div class="cw-top" style="user-select:none">
     <div style="flex:1;min-width:0">
       <div class="cw-title" id="cwTitle">Голосовой звонок</div>
-      <div class="cw-subtitle" id="cwSubtitle" style="font-size:11px;color:rgba(35,165,90,.8)">Подключение...</div>
+      <div class="cw-subtitle" id="cwSubtitle">Подключение...</div>
     </div>
-    <button onclick="toggleCWSize()" title="Скрыть" style="background:none;border:none;color:#72767d;font-size:18px;cursor:pointer;padding:0 2px;line-height:1">×</button>
+    <button onclick="toggleCWSize()" title="Скрыть" style="background:none;border:none;color:#72767d;font-size:20px;cursor:pointer;padding:0 4px;line-height:1;flex-shrink:0">×</button>
   </div>
-  <div style="display:flex;flex:1;overflow:hidden">
-    <div class="cw-body" id="cwBody"></div>
-    <div class="cw-participants-side" id="cwSide"></div>
-  </div>
+  <!-- Participants grid fills the space -->
+  <div class="cw-body" id="cwBody"></div>
+  <!-- Controls always at bottom -->
   <div class="cw-bar">
     <div class="cw-vol-wrap" title="Громкость">
-      <span style="font-size:12px;color:#72767d">🔊</span>
-      <input type="range" min="0" max="200" value="100" oninput="setVolume(this.value)" style="width:80px">
+      <span style="font-size:13px;color:#72767d">🔊</span>
+      <input type="range" min="0" max="200" value="100" oninput="setVolume(this.value)" style="width:70px;accent-color:#5865f2">
     </div>
     <button class="cw-btn cw-screen-btn" id="cwScreenBtn" onclick="toggleScreenShare()" title="Демонстрация экрана">🖥</button>
-    <button class="cw-btn cw-mic" id="cwMicBtn" onclick="toggleMic()" title="Микрофон">🎙</button>
+    <button class="cw-btn cw-mic" id="cwMicBtn" onclick="toggleMic()" title="Микрофон (M)">🎙</button>
     <button class="cw-btn cw-deaf" id="cwDeafBtn" onclick="toggleDeaf()" title="Звук">🎧</button>
-    <button class="cw-btn cw-end" onclick="leaveVoice()" title="Завершить звонок" style="background:rgba(237,66,69,.3);border-color:rgba(237,66,69,.4)">📵</button>
-    <button class="cw-btn" onclick="toggleCWSize()" title="Скрыть" style="background:rgba(255,255,255,.08)">✕</button>
+    <button class="cw-btn cw-end" onclick="leaveVoice()" title="Завершить">📵</button>
   </div>
 </div>
 
@@ -976,9 +972,9 @@ let audioCtx=null;
 let micStream=null;
 let micProcessor=null;
 let audioWorklet=null;
-const SAMPLE_RATE=16000;
-const CHUNK_MS=50;
-const CHUNK_SAMPLES=1024; // power of 2
+const SAMPLE_RATE=48000;
+const CHUNK_MS=20;
+const CHUNK_SAMPLES=2048; // power of 2, ~42ms at 48kHz
 
 // color picker
 const cp=document.getElementById('colorPicker');
@@ -1118,6 +1114,7 @@ function handleWS(d){
       toast('Голосовой','👋',(getUser(d.uid).name||d.uid)+' вышел','info');
       rtcClosePeer(d.uid);
       rtcScreenVideos.delete(d.uid);
+      cleanupPeerAudio(d.uid);
       if(inVoice)updateCallWindow();
       break;
     case 'speaking':
@@ -1146,10 +1143,33 @@ function handleWS(d){
 // ══════════════════════════════════════
 // AUDIO RELAY (микрофон → сервер → все)
 // ══════════════════════════════════════
+// AudioWorklet processor code (inline blob)
+const MIC_WORKLET_CODE = `
+class MicSender extends AudioWorkletProcessor {
+  constructor(){ super(); this._buf=[]; this._len=0; this._chunkSize=${CHUNK_SAMPLES||2048}; }
+  process(inputs){
+    const ch=inputs[0]&&inputs[0][0];
+    if(!ch) return true;
+    for(let i=0;i<ch.length;i++) this._buf.push(ch[i]);
+    this._len+=ch.length;
+    while(this._len>=this._chunkSize){
+      const chunk=this._buf.splice(0,this._chunkSize);
+      this._len-=this._chunkSize;
+      this.port.postMessage(new Float32Array(chunk),[new Float32Array(chunk).buffer]);
+    }
+    return true;
+  }
+}
+registerProcessor('mic-sender',MicSender);
+`;
+
 async function startMicRelay(){
+  // Полностью останавливаем старый контекст перед созданием нового
+  await stopMicRelay();
+
   try{
     micStream=await navigator.mediaDevices.getUserMedia({audio:{
-      sampleRate:SAMPLE_RATE,channelCount:1,
+      channelCount:1,
       echoCancellation:true,
       noiseSuppression:true,
       autoGainControl:true
@@ -1158,31 +1178,39 @@ async function startMicRelay(){
     toast('Микрофон','🎙','Нет доступа к микрофону: '+e.message,'error');
     return false;
   }
+
   audioCtx=new AudioContext({sampleRate:SAMPLE_RATE,latencyHint:'interactive'});
   if(audioCtx.state==='suspended') await audioCtx.resume();
-  const src=audioCtx.createMediaStreamSource(micStream);
-  micProcessor=audioCtx.createScriptProcessor(CHUNK_SAMPLES,1,1);
-  src.connect(micProcessor);
-  // ScriptProcessor нужен destination чтобы работать,
-  // но gain=0 чтобы не слышать себя в наушниках
-  const silentOut=audioCtx.createGain();
-  silentOut.gain.value=0;
-  micProcessor.connect(silentOut);
-  silentOut.connect(audioCtx.destination);
 
-  micProcessor.onaudioprocess=e=>{
+  // Регистрируем worklet через blob URL (без отдельного файла)
+  const blob=new Blob([MIC_WORKLET_CODE],{type:'application/javascript'});
+  const blobUrl=URL.createObjectURL(blob);
+  try{
+    await audioCtx.audioWorklet.addModule(blobUrl);
+  }catch(e){
+    // Fallback к ScriptProcessor если worklet не поддерживается
+    URL.revokeObjectURL(blobUrl);
+    return _startMicRelayFallback();
+  }
+  URL.revokeObjectURL(blobUrl);
+
+  const src=audioCtx.createMediaStreamSource(micStream);
+  micProcessor=new AudioWorkletNode(audioCtx,'mic-sender');
+  src.connect(micProcessor);
+  // Worklet не нужно подключать к destination, просто порт
+  micProcessor.port.onmessage=e=>{
     if(!inVoice) return;
     if(pttMode&&!pttHeld) return;
     if(micMuted) return;
-    const f32=e.inputBuffer.getChannelData(0);
+    const f32=e.data;
     // VAD
-    const vol=f32.reduce((a,b)=>a+Math.abs(b),0)/f32.length;
-    const spk=vol>0.01;
+    let vol=0; for(let i=0;i<f32.length;i++) vol+=Math.abs(f32[i]); vol/=f32.length;
+    const spk=vol>0.008;
     // Convert to Int16 and send
     const i16=new Int16Array(f32.length);
     for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
     wsSendBinary(i16.buffer);
-    // Speaking indicator — only on change
+    // Speaking indicator
     const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking);
     if(spk!==prevSpk){
       wsSend({type:'speaking',speaking:spk});
@@ -1194,23 +1222,74 @@ async function startMicRelay(){
   return true;
 }
 
-function stopMicRelay(){
-  if(micProcessor){micProcessor.disconnect();micProcessor=null;}
+// Fallback для браузеров без AudioWorklet
+function _startMicRelayFallback(){
+  const src=audioCtx.createMediaStreamSource(micStream);
+  micProcessor=audioCtx.createScriptProcessor(2048,1,1);
+  src.connect(micProcessor);
+  const silentOut=audioCtx.createGain(); silentOut.gain.value=0;
+  micProcessor.connect(silentOut); silentOut.connect(audioCtx.destination);
+  micProcessor.onaudioprocess=e=>{
+    if(!inVoice||micMuted||(pttMode&&!pttHeld)) return;
+    const f32=e.inputBuffer.getChannelData(0);
+    let vol=0; for(let i=0;i<f32.length;i++) vol+=Math.abs(f32[i]); vol/=f32.length;
+    const spk=vol>0.008;
+    const i16=new Int16Array(f32.length);
+    for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
+    wsSendBinary(i16.buffer);
+    const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking);
+    if(spk!==prevSpk){
+      wsSend({type:'speaking',speaking:spk});
+      if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
+        vcRooms[currentVoiceRoom][myUid].speaking=spk;
+      scheduleUI(()=>{renderVCUsers();updateVCBar();updateWidget();});
+    }
+  };
+  return true;
+}
+
+async function stopMicRelay(){
+  if(micProcessor){
+    micProcessor.disconnect();
+    if(micProcessor.port) micProcessor.port.onmessage=null;
+    micProcessor=null;
+  }
   if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
-  if(audioCtx){audioCtx.close();audioCtx=null;}
+  if(audioCtx){
+    try{ await audioCtx.close(); }catch(e){}
+    audioCtx=null;
+  }
 }
 
 // Incoming audio from server
 let remoteCtx=null;
+// Per-peer jitter buffer: uid -> { queue: AudioBuffer[], nextTime: number, gainNode }
+const peerAudio = new Map();
+
 function getRemoteCtx(){
   if(!remoteCtx){
-    // Must match sender's 48kHz — not SAMPLE_RATE (16kHz)
-    remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000,latencyHint:'interactive'});
+    remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE,latencyHint:'interactive'});
   }
   if(remoteCtx.state==='suspended'||remoteCtx.state==='interrupted'){
     remoteCtx.resume().catch(()=>{});
   }
   return remoteCtx;
+}
+
+function getPeerState(uid){
+  if(!peerAudio.has(uid)){
+    const ctx=getRemoteCtx();
+    const gainNode=ctx.createGain();
+    gainNode.gain.value=window._volumeGain||1;
+    gainNode.connect(ctx.destination);
+    peerAudio.set(uid,{nextTime:0, gainNode});
+  }
+  return peerAudio.get(uid);
+}
+
+function cleanupPeerAudio(uid){
+  const state=peerAudio.get(uid);
+  if(state){state.gainNode.disconnect();peerAudio.delete(uid);}
 }
 // Resume audio context on any user interaction
 function ensureAudioResumed(){
@@ -1236,20 +1315,29 @@ function handleAudioChunk(buf){
   }
   // Never play own audio back
   if(fromUid===myUid) return;
-  // Play audio
+  // Play audio with per-peer jitter buffer (smooth, no gaps/overlaps)
   const pcmBuf=buf.slice(nl+1);
   if(pcmBuf.byteLength<2) return;
   const i16=new Int16Array(pcmBuf);
   const f32=new Float32Array(i16.length);
-  const gain=window._volumeGain||1;
-  for(let i=0;i<i16.length;i++) f32[i]=(i16[i]/32767)*gain;
+  for(let i=0;i<i16.length;i++) f32[i]=i16[i]/32767;
   const ctx=getRemoteCtx();
-  const abuf=ctx.createBuffer(1,f32.length,48000);
+  const state=getPeerState(fromUid);
+  // Update gain in case volume changed
+  state.gainNode.gain.value=window._volumeGain||1;
+  const abuf=ctx.createBuffer(1,f32.length,SAMPLE_RATE);
   abuf.copyToChannel(f32,0);
   const src=ctx.createBufferSource();
   src.buffer=abuf;
-  src.connect(ctx.destination);
-  src.start();
+  src.connect(state.gainNode);
+  // Schedule: if we're behind, snap to now + small buffer; otherwise queue
+  const now=ctx.currentTime;
+  const BUFFER_AHEAD=0.06; // 60ms buffer ahead
+  if(state.nextTime < now + 0.001){
+    state.nextTime = now + BUFFER_AHEAD;
+  }
+  src.start(state.nextTime);
+  state.nextTime += abuf.duration;
 }
 
 // ── Incoming screen frames ──
@@ -2122,8 +2210,7 @@ function openCallWindow(title, subtitle){
 
 function updateCallWindow(){
   const body=document.getElementById('cwBody');
-  const side=document.getElementById('cwSide');
-  if(!body||!side) return;
+  if(!body) return;
   const roomUsers=vcRooms[currentVoiceRoom]||{};
   const allUsers=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true},
     ...Object.entries(roomUsers).map(([uid,u])=>({uid,...u,isMe:false}))];
@@ -2138,71 +2225,71 @@ function updateCallWindow(){
   });
 
   if(activeScreens.length>0){
-    body.style.cssText='flex-direction:column;align-items:stretch;gap:8px;';
-
-    // ── Smart DOM update: only rebuild if screen set changed ──
+    // Screen share mode: screen takes most space, participants in small strip at bottom
+    body.style.cssText='display:flex;flex-direction:column;gap:6px;align-items:stretch;padding:10px;';
     const newIds=activeScreens.map(s=>s.uid).sort().join(',');
     const oldIds=(body.dataset.screenIds||'');
     if(newIds!==oldIds){
       body.dataset.screenIds=newIds;
       const screenTiles=activeScreens.map(s=>`
-        <div style="flex:1;min-height:0;position:relative;border:2px solid var(--accent);border-radius:12px;overflow:hidden;background:#000">
+        <div style="flex:1;min-height:120px;position:relative;border:2px solid var(--accent);border-radius:10px;overflow:hidden;background:#000">
           ${s.isMe
             ? `<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
             : `<canvas id="scrcanvas_${s.uid}" style="width:100%;height:100%;object-fit:contain;display:block;background:#000"></canvas>`
           }
-          <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff;display:flex;gap:8px;align-items:center">🖥 ${esc(s.name)}${s.isMe?' (вы)':''} ${s.isMe?'<span id="screenFpsIndicator" style="color:#23a55a;font-size:10px"></span>':''}</div>
+          <div style="position:absolute;bottom:6px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:2px 8px;font-size:10px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''} ${s.isMe?'<span id="screenFpsIndicator" style="color:#23a55a;font-size:9px"></span>':''}</div>
         </div>`).join('');
-      const strip=`<div id="cwStrip" style="display:flex;gap:8px;flex-shrink:0;justify-content:center;flex-wrap:wrap;padding-bottom:4px"></div>`;
+      const strip=`<div id="cwStrip" style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;padding:4px 0"></div>`;
       body.innerHTML=screenTiles+strip;
-      // Attach own screen video
       const ownVid=document.getElementById('scrvid_'+myUid);
       if(ownVid&&screenStream){ownVid.srcObject=screenStream;ownVid.play().catch(()=>{});}
     }
-
-    // ── Always update participant strip (speaking state) ──
     const strip=document.getElementById('cwStrip');
     if(strip){
       strip.innerHTML=allUsers.map(u=>{
         const isMic=u.isMe&&micMuted;
-        return `<div style="width:110px;height:72px;flex-shrink:0;border:2px solid ${u.speaking&&!isMic?'var(--green)':'transparent'};border-radius:10px;overflow:hidden;background:#1e2029;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
-          <div class="cw-av" style="background:${u.color};width:34px;height:34px;font-size:12px">${u.init}</div>
-          <div class="cw-name" style="font-size:10px">${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?'🔇':''}</div>
+        return `<div style="width:80px;height:56px;flex-shrink:0;border:2px solid ${u.speaking&&!isMic?'#23a55a':'transparent'};border-radius:8px;overflow:hidden;background:#1a1d27;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
+          <div style="width:26px;height:26px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${u.init}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:72px;text-align:center">${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?' 🔇':''}</div>
         </div>`;
       }).join('');
     }
 
   } else {
+    // Normal mode: participant grid, Discord style
     body.style.cssText='';
     body.dataset.screenIds='';
+    // Grid cols: 1 person = centered solo, 2 = 2 col, 3-4 = 2 col, 5+ = 2 col scroll
+    const gridStyle=count===1?'grid-template-columns:1fr':'grid-template-columns:1fr 1fr';
+    body.style.cssText=`display:grid;${gridStyle};gap:6px;padding:10px;overflow-y:auto;align-content:start;`;
     body.innerHTML=allUsers.map(u=>{
-      const sz=count===1?'solo':count===2?'big':'small';
       const isMic=u.isMe&&micMuted;
-      return `<div class="cw-participant ${sz}${u.speaking&&!isMic?' spk':''}">
+      const spk=u.speaking&&!isMic;
+      const sz=count===1?'solo':count===2?'big':'small';
+      return `<div class="cw-participant ${sz}${spk?' spk':''}">
         <div class="cw-av" style="background:${u.color}">${u.init}</div>
-        <div class="cw-name">${u.isMe?'🎙':''} ${esc(u.name||'?')}${u.isMe?' (я)':''}${u.speaking&&!isMic?'<span style="color:#23a55a">●</span>':''}</div>
+        <div class="cw-name">${u.isMe?'🎙 ':''}${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?' 🔇':''}</div>
       </div>`;
     }).join('');
   }
 
-  // Side panel — lightweight update
-  side.innerHTML='<div class="cw-side-title">Участники ('+allUsers.length+')</div>'+
-    allUsers.map(u=>{
-      const isMic=u.isMe&&micMuted;
-      return `<div class="cw-side-user">
-        <div class="cw-side-av" style="background:${u.color}">${u.init}</div>
-        <div class="cw-side-name">${esc(u.name||'?')}${u.isMe?' (я)':''}${isMic?' 🔇':''}</div>
-        <div class="cw-side-spk${u.speaking&&!isMic?' on':''}"></div>
-      </div>`;
-    }).join('');
+  // Update mic/deaf/screen button states
+  const mb=document.getElementById('cwMicBtn');
+  const db=document.getElementById('cwDeafBtn');
+  const sb=document.getElementById('cwScreenBtn');
+  if(mb){mb.classList.toggle('off',micMuted);mb.textContent=micMuted?'🔇':'🎙';}
+  if(db){db.classList.toggle('off',deafMuted);db.textContent=deafMuted?'🔕':'🎧';}
+  if(sb){sb.classList.toggle('on',screenSharing);sb.textContent=screenSharing?'🖥':'🖥';}
 }
-window.leaveVoice=function(){
+window.leaveVoice=async function(){
   if(!inVoice)return;
   inVoice=false;
   wsSend({type:'leave_voice'});
-  stopMicRelay();
+  await stopMicRelay();
+  // Cleanup all peer audio nodes
+  peerAudio.forEach((_,uid)=>cleanupPeerAudio(uid));
+  peerAudio.clear();
   document.getElementById('vbar').classList.remove('vis');
-  // call-panel removed
   const cw=document.getElementById('callWindow');if(cw){cw.classList.remove('vis');cw.style.cssText='';}
   const wgt=document.getElementById('voiceWidget');if(wgt)wgt.style.display='none';
   stopScreenShare();
