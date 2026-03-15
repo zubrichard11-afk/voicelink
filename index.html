@@ -16,6 +16,10 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--text0);font-family:var(--font);font-size:13px}
+.dash-card{background:var(--bg3);border-radius:10px;padding:14px 16px;text-align:center;border:1px solid rgba(255,255,255,.06)}
+.dash-val{font-size:24px;font-weight:700;color:#dcddde;line-height:1}
+.dash-lbl{font-size:11px;color:#72767d;margin-top:4px;text-transform:uppercase;letter-spacing:.05em}
+#pttIndicator.active{background:rgba(35,165,90,.3);border-color:#23a55a;color:#23a55a}
 body.compact .msg-g{padding-top:1px;padding-bottom:1px}
 body.compact .msg-av{width:32px;height:32px;font-size:12px}
 body.compact .msg-txt{font-size:12px}
@@ -618,6 +622,23 @@ input,textarea{font-family:var(--font)}
   </div>
 </div>
 
+<!-- MINI VOICE WIDGET -->
+<div id="voiceWidget" style="display:none;position:fixed;bottom:80px;right:20px;width:220px;background:#111217;border:1px solid rgba(255,255,255,.1);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:500;font-family:'JetBrains Mono',monospace;overflow:hidden">
+  <div style="background:#1a1d27;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:move" id="widgetDragHandle">
+    <div style="font-size:11px;font-weight:700;color:#dcddde" id="widgetRoomName">🔊 —</div>
+    <div style="display:flex;gap:4px">
+      <div style="font-size:10px;color:#23a55a" id="widgetPing">—</div>
+      <button onclick="document.getElementById('voiceWidget').style.display='none'" style="background:none;border:none;color:#72767d;font-size:14px;cursor:pointer;padding:0 2px">×</button>
+    </div>
+  </div>
+  <div style="padding:8px 10px" id="widgetUsers"></div>
+  <div style="padding:6px 10px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:6px">
+    <button onclick="toggleMic()" id="widgetMicBtn" title="Мут (M)" style="flex:1;padding:6px;border-radius:6px;border:none;background:#2b2d31;color:#dcddde;font-size:13px;cursor:pointer">🎙</button>
+    <button id="pttIndicator" onmousedown="pttMouseDown()" onmouseup="pttMouseUp()" title="PTT" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:#2b2d31;color:#dcddde;font-size:11px;cursor:pointer;transition:all .1s">PTT</button>
+    <button onclick="leaveVoice()" title="Выйти" style="flex:1;padding:6px;border-radius:6px;border:none;background:rgba(237,66,69,.2);color:#ed4245;font-size:13px;cursor:pointer">📵</button>
+  </div>
+</div>
+<div id="pttOverlay" style="display:none;position:fixed;bottom:140px;right:20px;background:rgba(35,165,90,.9);color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;z-index:501;pointer-events:none">🎙 PTT активен</div>
 <div id="toastBox"></div>
 
 <script>
@@ -639,6 +660,14 @@ let currentDMId=null;
 let currentView='friends';
 let currentSrvCh='general';
 let micMuted=false,deafMuted=false;
+let pttMode=false;         // push-to-talk active
+let pttHeld=false;         // PTT key currently held
+let myRole='user';         // admin|mod|user
+let myPing=0;              // ms to server
+let adaptiveBitrate=true;  // reduce quality when idle
+// UI batching — defer heavy DOM updates
+let _uiBatch=null;
+function scheduleUI(fn){ if(_uiBatch) return; _uiBatch=requestAnimationFrame(()=>{_uiBatch=null;fn();}); }
 let screenSharing=false;
 let screenStream=null;
 const rtcPeers=new Map();
@@ -739,6 +768,7 @@ function handleWS(d){
   switch(d.type){
     case 'init':
       onlineUsers=d.users||{};vcRooms=d.rooms||{};
+      if(d.myRole){myRole=d.myRole;}
       if(!window._userCache) window._userCache={};
       Object.assign(window._userCache, onlineUsers);
       if(d.msgs){srvMsgs.general=d.msgs.general||[];srvMsgs.gaming=d.msgs.gaming||[];srvMsgs.dev=d.msgs.dev||[];}
@@ -782,7 +812,7 @@ function handleWS(d){
       showIncomingCall(d.from, d.name, d.color, d.init);
       break;
     case 'call_declined': toast('Звонок','📵',getUser(d.from).name+' отклонил','error');break;
-    case 'voice_update': vcRooms=d.rooms||{};renderVCUsers();updateVCBar();break;
+    case 'voice_update': vcRooms=d.rooms||{};scheduleUI(()=>{renderVCUsers();updateVCBar();updateWidget();});break;
     case 'voice_joined':
       toast('Голосовой','🔊','В канале: '+(d.peers.length+1)+' чел.','success');
       (d.peers||[]).forEach(p=>{ if(p.screenSharing) rtcRequestScreen(p.uid); });
@@ -844,8 +874,11 @@ async function startMicRelay(){
   micProcessor=audioCtx.createScriptProcessor(CHUNK_SAMPLES,1,1);
   micProcessor.onaudioprocess=e=>{
     if(!inVoice) return;
+    // PTT: only transmit while key held
+    if(pttMode&&!pttHeld){
+      return;
+    }
     if(micMuted){
-      // Ensure speaking=false stays synced
       return;
     }
     const f32=e.inputBuffer.getChannelData(0);
@@ -856,13 +889,20 @@ async function startMicRelay(){
     const i16=new Int16Array(f32.length);
     for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
     wsSendBinary(i16.buffer);
+    // Adaptive bitrate: skip every other frame when silent
+    if(adaptiveBitrate&&!spk){
+      if(!window._abSkip) window._abSkip=0;
+      window._abSkip++;
+      if(window._abSkip%3!==0) return; // send 1/3 frames when silent
+    } else { window._abSkip=0; }
+
     // Speaking indicator — only send on change
     const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking);
     if(spk!==prevSpk){
       wsSend({type:'speaking',speaking:spk});
       if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
         vcRooms[currentVoiceRoom][myUid].speaking=spk;
-      renderVCUsers();updateVCBar();
+      scheduleUI(()=>{renderVCUsers();updateVCBar();updateWidget();});
     }
   };
   src.connect(micProcessor);
@@ -1285,6 +1325,35 @@ window.joinVoice=function(room, peerId){
   const isDM2=room.startsWith('dm:');
   const peerName2=peerId?getUser(peerId).name:'';
   openCallWindow(isDM2?('📞 '+peerName2):('🔊 '+room), isDM2?'Голосовой звонок':'Голосовой канал');
+  // Show mini widget
+  const wgt=document.getElementById('voiceWidget');
+  if(wgt){
+    wgt.style.display='block';
+    document.getElementById('widgetRoomName').textContent=(isDM2?'📞 ':'🔊 ')+(isDM2?peerName2:room);
+  }
+  updateWidget();
+}
+
+function updateWidget(){
+  const el=document.getElementById('widgetUsers');
+  if(!el||!inVoice) return;
+  const users=vcRooms[currentVoiceRoom]||{};
+  const all=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true,role:myRole},
+    ...Object.entries(users).map(([uid,u])=>({uid,...u,isMe:false}))];
+  el.innerHTML=all.map(u=>{
+    const isMic=u.isMe&&micMuted;
+    const spkColor=u.speaking&&!isMic?'#23a55a':'#72767d';
+    const rc=roleColor(u.role||'');
+    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+      <div style="width:6px;height:6px;border-radius:50%;background:${spkColor};flex-shrink:0${u.speaking&&!isMic?';box-shadow:0 0 6px #23a55a':''}"></div>
+      <span style="font-size:11px;color:${rc||'#dcddde'};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name)}${u.isMe?' (я)':''}${isMic?' 🔇':''}</span>
+      ${u.ping?`<span style="font-size:9px;color:#72767d">${u.ping}ms</span>`:''}
+    </div>`;
+  }).join('');
+  const micBtn=document.getElementById('widgetMicBtn');
+  if(micBtn) micBtn.textContent=micMuted?'🔇':'🎙';
+  const pttBtn=document.getElementById('pttIndicator');
+  if(pttBtn){pttBtn.style.display=pttMode?'':'none';if(!pttMode)pttBtn.style.display='none';}
 };
 
 function updateCallPanel(){
@@ -1575,6 +1644,7 @@ window.leaveVoice=function(){
   document.getElementById('vbar').classList.remove('vis');
   const panel=document.getElementById('callPanel');if(panel)panel.classList.remove('vis');
   const cw=document.getElementById('callWindow');if(cw){cw.classList.remove('vis');cw.style.cssText='';}
+  const wgt=document.getElementById('voiceWidget');if(wgt)wgt.style.display='none';
   stopScreenShare();
   toast('Голосовой','👋','Вы вышли','info');
 };
@@ -1592,7 +1662,9 @@ function renderVCUsers(){
       const isMutedMic=uid===myUid&&micMuted;
       const isMutedDeaf=uid===myUid&&deafMuted;
       const icons=(isMutedMic?'🔇':'')+(isMutedDeaf?'🔕':'');
-      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}"><span class="vc-dot"></span>${esc(u.name)}${icons?`<span style="font-size:10px;opacity:.6;margin-left:3px">${icons}</span>`:''}</div>`;
+      const role=u.role||'';
+      const pingMs=u.ping?`<span style="font-size:9px;color:#72767d;margin-left:4px">${u.ping}ms</span>`:'';
+      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}"><span class="vc-dot"></span><span style="color:${roleColor(role)||'inherit'}">${esc(u.name)}</span>${roleBadge(role)}${icons?`<span style="font-size:10px;opacity:.6;margin-left:3px">${icons}</span>`:''}${pingMs}</div>`;
     }).join('');
   });
 }
@@ -1767,6 +1839,13 @@ function getUser(uid){
   if(window._userCache&&window._userCache[uid]) return window._userCache[uid];
   return{name:uid.slice(0,8)+'...',color:'#747f8d',init:'?',tag:'',status:'offline',activity:''};
 }
+function roleLabel(r){return r==='admin'?'Admin':r==='mod'?'Mod':'User';}
+function roleColor(r){return r==='admin'?'#ed4245':r==='mod'?'#faa61a':'';}
+function roleBadge(r){
+  if(r==='admin') return '<span style="font-size:9px;background:#ed4245;color:#fff;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700">ADMIN</span>';
+  if(r==='mod')   return '<span style="font-size:9px;background:#faa61a;color:#000;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700">MOD</span>';
+  return '';
+}
 function statusLabel(s){return s==='online'?'В сети':s==='idle'?'Не активен':s==='dnd'?'Не беспокоить':'Не в сети';}
 function tNow(){const n=new Date();return n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1820,6 +1899,8 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
       <div class="s-nav-sep"></div>
       <div class="s-nav-lbl">Информация</div>
       <button class="s-nav-item" onclick="showSPage('about',this)">ℹ️ О приложении</button>
+      <button class="s-nav-item" onclick="showSPage('roles',this)" id="navRoles">🛡️ Роли и модерация</button>
+      <button class="s-nav-item" onclick="showSPage('dashboard',this)">📊 Статистика сервера</button>
       <div class="s-nav-sep"></div>
       <button class="s-nav-item s-nav-danger" onclick="confirmLogout()">🚪 Выйти</button>
     </div>
@@ -1935,6 +2016,28 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
               <input type="range" min="1" max="10" value="2" id="sVADThresh" oninput="document.getElementById('sVADVal').textContent=this.value;saveAudioSettings()">
               <span class="s-slider-val" id="sVADVal">2</span>
             </div>
+          </div>
+        </div>
+        <div class="s-section">
+          <div class="s-section-title">Push-to-Talk</div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Режим PTT</div><div class="s-row-desc">Голос передаётся только пока зажата кнопка</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sPTT" onchange="togglePTTMode(this.checked)"><span class="s-toggle-slider"></span></label>
+          </div>
+          <div class="s-row" id="sPTTKeyRow" style="opacity:.5;pointer-events:none">
+            <div class="s-row-info"><div class="s-row-label">Кнопка PTT</div><div class="s-row-desc">Нажмите для изменения</div></div>
+            <div class="s-keybind-key" id="sPTTKey" onclick="rebindPTT(this)">X</div>
+          </div>
+        </div>
+        <div class="s-section">
+          <div class="s-section-title">Качество звука</div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Адаптивный битрейт</div><div class="s-row-desc">Снижает качество когда тихо — меньше нагрузка в играх</div></div>
+            <label class="s-toggle"><input type="checkbox" id="sAdaptiveBR" checked onchange="toggleAdaptiveBR(this.checked)"><span class="s-toggle-slider"></span></label>
+          </div>
+          <div class="s-row">
+            <div class="s-row-info"><div class="s-row-label">Пинг до сервера</div></div>
+            <div style="font-size:13px;color:#23a55a;font-weight:700" id="myPingVal">—</div>
           </div>
         </div>
       </div>
@@ -2152,6 +2255,44 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
         </div>
       </div>
 
+      <!-- ROLES -->
+      <div class="s-page" id="spage-roles">
+        <div class="s-title">Роли и модерация</div>
+        <div class="s-subtitle">Управление участниками</div>
+        <div class="s-section" id="rolesUserList">
+          <div class="s-section-title">Участники онлайн</div>
+          <div id="rolesListBody" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+          <button onclick="renderRolesList()" style="margin-top:10px;padding:6px 14px;background:var(--bg3);color:#96989d;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font)">↺ Обновить</button>
+        </div>
+        <div class="s-section">
+          <div class="s-section-title">Экспорт истории сообщений</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button onclick="exportHistory('general')" style="padding:7px 14px;background:var(--bg3);color:#dcddde;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font)">💾 #general</button>
+            <button onclick="exportHistory('gaming')" style="padding:7px 14px;background:var(--bg3);color:#dcddde;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font)">💾 #gaming</button>
+            <button onclick="exportHistory('dev')" style="padding:7px 14px;background:var(--bg3);color:#dcddde;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font)">💾 #dev</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DASHBOARD -->
+      <div class="s-page" id="spage-dashboard">
+        <div class="s-title">Статистика сервера</div>
+        <div class="s-subtitle">Нагрузка и активность в реальном времени</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px" id="dashCards">
+          <div class="dash-card"><div class="dash-val" id="dUsers">—</div><div class="dash-lbl">онлайн</div></div>
+          <div class="dash-card"><div class="dash-val" id="dPeak">—</div><div class="dash-lbl">пик</div></div>
+          <div class="dash-card"><div class="dash-val" id="dMsgs">—</div><div class="dash-lbl">сообщений</div></div>
+          <div class="dash-card"><div class="dash-val" id="dAudio">—</div><div class="dash-lbl">МБ аудио</div></div>
+          <div class="dash-card"><div class="dash-val" id="dUptime">—</div><div class="dash-lbl">аптайм</div></div>
+          <div class="dash-card"><div class="dash-val" id="dMyPing" style="color:#23a55a">—</div><div class="dash-lbl">мой пинг</div></div>
+        </div>
+        <div class="s-section">
+          <div class="s-section-title">Соединения (последние 5 мин)</div>
+          <canvas id="dashChart" width="480" height="100" style="width:100%;height:100px;border-radius:6px;background:#0d0f13;margin-top:8px"></canvas>
+        </div>
+        <button onclick="refreshDashboard()" style="margin-top:12px;padding:7px 16px;background:var(--bg3);color:#96989d;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font)">↺ Обновить</button>
+      </div>
+
       <!-- ABOUT -->
       <div class="s-page" id="spage-about">
         <div class="s-title">О приложении</div>
@@ -2239,6 +2380,14 @@ function loadAllSettings(){
   document.querySelectorAll('.s-lang-opt').forEach(el=>el.classList.toggle('act',el.id==='lang-'+lang));
 
   // Animations
+  // PTT
+  const ptt=localStorage.getItem('vl_ptt');
+  if(ptt==='1'){pttMode=true;const el=document.getElementById('sPTT');if(el)el.checked=true;const row=document.getElementById('sPTTKeyRow');if(row){row.style.opacity='1';row.style.pointerEvents='auto';}}
+  const pttKey=localStorage.getItem('vl_ptt_key')||'x';
+  const pttKeyEl=document.getElementById('sPTTKey');
+  if(pttKeyEl)pttKeyEl.textContent=pttKey.split('+').map(k=>k==='ctrl'?'Ctrl':k==='shift'?'Shift':k==='alt'?'Alt':k.toUpperCase()).join('+');
+  const abr=localStorage.getItem('vl_adaptbr');
+  if(abr==='0'){adaptiveBitrate=false;const el=document.getElementById('sAdaptiveBR');if(el)el.checked=false;}
   const anim=localStorage.getItem('vl_animations');
   if(anim==='0'){document.getElementById('sAnimations').checked=false;document.body.classList.add('no-animations');}
 }
@@ -2253,9 +2402,76 @@ window.openSettings=function(){
   showSPage('profile',document.querySelector('.s-nav-item'));
 };
 
+// ── Roles list render ──
+window.renderRolesList=function(){
+  const el=document.getElementById('rolesListBody');
+  if(!el) return;
+  const myIsAdmin=myRole==='admin';
+  const myIsMod=myRole==='mod'||myRole==='admin';
+  el.innerHTML=Object.entries(onlineUsers).map(([uid,u])=>{
+    const role=u.role||'user';
+    const rc=roleColor(role);
+    const isMe=uid===myUid;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg3);border-radius:8px">
+      <div style="width:32px;height:32px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">${u.init}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:${rc||'#dcddde'}">${esc(u.name)}${isMe?' (вы)':''}</div>
+        <div style="font-size:11px;color:#72767d">${roleLabel(role)}</div>
+      </div>
+      ${myIsAdmin&&!isMe?`<div style="display:flex;gap:4px">
+        <button onclick="setUserRole('${uid}','admin')" style="padding:3px 7px;border-radius:4px;border:none;background:#ed4245;color:#fff;font-size:10px;cursor:pointer" title="Admin">A</button>
+        <button onclick="setUserRole('${uid}','mod')" style="padding:3px 7px;border-radius:4px;border:none;background:#faa61a;color:#000;font-size:10px;cursor:pointer" title="Mod">M</button>
+        <button onclick="setUserRole('${uid}','user')" style="padding:3px 7px;border-radius:4px;border:none;background:#4f545c;color:#fff;font-size:10px;cursor:pointer" title="User">U</button>
+        <button onclick="kickUser('${uid}')" style="padding:3px 7px;border-radius:4px;border:none;background:rgba(237,66,69,.2);color:#ed4245;font-size:10px;cursor:pointer" title="Кик">✕</button>
+      </div>`:''}
+    </div>`;
+  }).join('');
+};
+
+// ── Dashboard ──
+window.refreshDashboard=async function(){
+  try{
+    const r=await fetch('/stats');
+    const d=await r.json();
+    const fmt=s=>{const h=Math.floor(s/3600);const m=Math.floor((s%3600)/60);return h?`${h}ч ${m}м`:`${m}м`;};
+    document.getElementById('dUsers').textContent=d.users;
+    document.getElementById('dPeak').textContent=d.peak;
+    document.getElementById('dMsgs').textContent=d.msgs;
+    document.getElementById('dAudio').textContent=d.audioMB;
+    document.getElementById('dUptime').textContent=fmt(d.uptime);
+    document.getElementById('dMyPing').textContent=myPing+'ms';
+    // Draw chart
+    const canvas=document.getElementById('dashChart');
+    if(canvas&&d.history){
+      const ctx=canvas.getContext('2d');
+      const w=canvas.width, h=canvas.height;
+      ctx.clearRect(0,0,w,h);
+      const data=d.history.conns||[];
+      if(data.length>1){
+        const max=Math.max(...data,1);
+        ctx.strokeStyle='#5865f2';ctx.lineWidth=2;ctx.beginPath();
+        data.forEach((v,i)=>{
+          const x=(i/(data.length-1))*w;
+          const y=h-(v/max)*(h-8)-4;
+          i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+        // Fill
+        ctx.fillStyle='rgba(88,101,242,.15)';ctx.beginPath();
+        data.forEach((v,i)=>{const x=(i/(data.length-1))*w;const y=h-(v/max)*(h-8)-4;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+        ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fill();
+      }
+    }
+  }catch(e){toast('Статистика','📊','Не удалось загрузить','error');}
+};
+
+// Auto-refresh dashboard when open
+let _dashInterval=null;
+
 window.closeSettings=function(){
   document.getElementById('settingsBg').style.display='none';
-  if(kbRebinding){stopRebind();} 
+  if(kbRebinding){stopRebind();}
+  clearInterval(_dashInterval);_dashInterval=null; 
 };
 
 window.showSPage=function(id,btn){
@@ -2264,6 +2480,9 @@ window.showSPage=function(id,btn){
   const page=document.getElementById('spage-'+id);
   if(page)page.style.display='block';
   if(btn)btn.classList.add('act');
+  if(id==='dashboard'){clearInterval(_dashInterval);refreshDashboard();_dashInterval=setInterval(refreshDashboard,5000);}
+  else{clearInterval(_dashInterval);_dashInterval=null;}
+  if(id==='roles') renderRolesList();
 };
 
 // ── Audio settings ──
@@ -2441,6 +2660,39 @@ document.addEventListener('keydown',function(e){
   stopRebind();
 },true);
 
+// PTT key handlers
+document.addEventListener('keydown',function(e){
+  if(!pttMode||!inVoice) return;
+  const parts=[];
+  if(e.ctrlKey)parts.push('ctrl');if(e.shiftKey)parts.push('shift');if(e.altKey)parts.push('alt');
+  const k=e.key.toLowerCase();
+  if(!['control','shift','alt','meta'].includes(k))parts.push(k);
+  const combo=parts.join('+');
+  const pttKey=localStorage.getItem('vl_ptt_key')||'mouse4';
+  if(combo===pttKey&&!pttHeld){
+    pttHeld=true; e.preventDefault();
+    if(micMuted){micMuted=false;} // temp unmute for PTT
+    document.getElementById('pttIndicator')?.classList.add('active');
+  }
+},true);
+document.addEventListener('keyup',function(e){
+  if(!pttMode||!pttHeld) return;
+  const parts=[];
+  if(e.ctrlKey)parts.push('ctrl');if(e.shiftKey)parts.push('shift');if(e.altKey)parts.push('alt');
+  const k=e.key.toLowerCase();
+  if(!['control','shift','alt','meta'].includes(k))parts.push(k);
+  const combo=parts.join('+');
+  const pttKey=localStorage.getItem('vl_ptt_key')||'mouse4';
+  if(combo===pttKey){
+    pttHeld=false;
+    wsSend({type:'speaking',speaking:false});
+    if(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid])
+      vcRooms[currentVoiceRoom][myUid].speaking=false;
+    document.getElementById('pttIndicator')?.classList.remove('active');
+    renderVCUsers();updateVCBar();
+  }
+},true);
+
 // Override global keydown to use keybinds map
 document.addEventListener('keydown',function(e){
   if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
@@ -2476,6 +2728,83 @@ window.setLanguage=function(lang,el){
 };
 
 // ── Confirm logout ──
+// ── PTT functions ──
+window.togglePTTMode=function(on){
+  pttMode=on;
+  pttHeld=false;
+  localStorage.setItem('vl_ptt',on?'1':'0');
+  const row=document.getElementById('sPTTKeyRow');
+  if(row){row.style.opacity=on?'1':'0.5';row.style.pointerEvents=on?'auto':'none';}
+  toast('PTT',on?'🎙':'🎙',on?'Push-to-Talk включён':'PTT выключен','info');
+};
+window.rebindPTT=function(el){
+  el.textContent='...'; el.classList.add('listening');
+  const handler=function(e){
+    e.preventDefault();
+    const parts=[];
+    if(e.ctrlKey)parts.push('ctrl');if(e.shiftKey)parts.push('shift');if(e.altKey)parts.push('alt');
+    const k=e.key.toLowerCase();
+    if(!['control','shift','alt','meta'].includes(k))parts.push(k);
+    const combo=parts.join('+');
+    localStorage.setItem('vl_ptt_key',combo);
+    el.textContent=combo.split('+').map(k=>k==='ctrl'?'Ctrl':k==='shift'?'Shift':k==='alt'?'Alt':k.toUpperCase()).join('+');
+    el.classList.remove('listening');
+    document.removeEventListener('keydown',handler,true);
+    toast('PTT','⌨️','Кнопка установлена','success');
+  };
+  document.addEventListener('keydown',handler,true);
+};
+window.pttMouseDown=function(){
+  if(!pttMode||!inVoice) return;
+  pttHeld=true;
+  document.getElementById('pttOverlay').style.display='block';
+  document.getElementById('pttIndicator')?.classList.add('active');
+};
+window.pttMouseUp=function(){
+  pttHeld=false;
+  document.getElementById('pttOverlay').style.display='none';
+  document.getElementById('pttIndicator')?.classList.remove('active');
+  wsSend({type:'speaking',speaking:false});
+};
+window.toggleAdaptiveBR=function(on){
+  adaptiveBitrate=on;
+  localStorage.setItem('vl_adaptbr',on?'1':'0');
+};
+
+// ── Role management (admin panel) ──
+window.setUserRole=function(uid,role){
+  if(myRole!=='admin'){toast('Роли','⚠️','Только Admin','error');return;}
+  wsSend({type:'set_role',uid,role});
+};
+window.kickUser=function(uid){
+  if(myRole!=='admin'&&myRole!=='mod'){toast('Кик','⚠️','Нет прав','error');return;}
+  if(confirm('Кикнуть '+getUser(uid).name+'?')) wsSend({type:'kick',uid});
+};
+
+// ── Message history export ──
+window.exportHistory=function(channel){
+  const ch=channel||'general';
+  const msgs2=srvMsgs[ch]||[];
+  const lines=msgs2.map(m=>`[${m.time}] ${m.fromName}: ${m.text||''}`);const text=lines.join('\n');
+  const blob=new Blob([text],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`voicelink-${ch}-${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  toast('История','💾','Экспортировано','success');
+};
+
+// ── Widget drag ──
+(function(){
+  const handle=document.getElementById('widgetDragHandle');
+  const wgt=document.getElementById('voiceWidget');
+  if(!handle||!wgt) return;
+  let dragging=false,ox=0,oy=0;
+  handle.addEventListener('mousedown',e=>{dragging=true;ox=e.clientX-wgt.offsetLeft;oy=e.clientY-wgt.offsetTop;});
+  document.addEventListener('mousemove',e=>{if(!dragging)return;wgt.style.left=Math.max(0,e.clientX-ox)+'px';wgt.style.top=Math.max(0,e.clientY-oy)+'px';wgt.style.right='auto';wgt.style.bottom='auto';});
+  document.addEventListener('mouseup',()=>{dragging=false;});
+})();
+
 window.confirmLogout=function(){
   if(confirm('Выйти из аккаунта? Страница перезагрузится.')){
     ['vl_name','vl_color','vl_uid'].forEach(k=>localStorage.removeItem(k));

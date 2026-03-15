@@ -2,21 +2,50 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const PORT = process.env.PORT || 3000;
 
-const users  = new Map();
-const rooms  = new Map();
-const msgs   = { general:[], gaming:[], dev:[] };
-const dmMsgs = new Map();
+const users   = new Map();
+const rooms   = new Map();
+const msgs    = { general:[], gaming:[], dev:[] };
+const dmMsgs  = new Map();
+
+// ── Roles: first user to join becomes Admin ──
+const roles = new Map(); // uid -> 'admin'|'mod'|'user'
+let firstUser = null;
+
+// ── Stats for dashboard ──
+const stats = { conns: 0, peak: 0, msgCount: 0, audioBytes: 0, startTime: Date.now() };
+const statHistory = { cpu:[], ram:[], conns:[] }; // last 60 points
+setInterval(() => {
+  const mem = process.memoryUsage();
+  statHistory.ram.push(Math.round(mem.rss/1024/1024));
+  statHistory.conns.push(users.size);
+  // CPU via process.cpuUsage (delta)
+  const cpu = process.cpuUsage();
+  statHistory.cpu.push(Math.round((cpu.user+cpu.system)/1000/100));
+  if (statHistory.ram.length > 60) { statHistory.ram.shift(); statHistory.conns.shift(); statHistory.cpu.shift(); }
+}, 5000);
 
 const server = http.createServer((req, res) => {
-  if (req.url === '/' || req.url === '/index.html') {
+  const url = req.url.split('?')[0];
+  if (url === '/' || url === '/index.html') {
     const file = path.join(__dirname, 'index.html');
     if (fs.existsSync(file)) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(fs.readFileSync(file));
     } else { res.writeHead(404); res.end('index.html not found'); }
+  } else if (url === '/stats') {
+    // Admin dashboard endpoint
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({
+      users: users.size, peak: stats.peak, msgs: stats.msgCount,
+      audioMB: Math.round(stats.audioBytes/1024/1024*10)/10,
+      uptime: Math.round((Date.now()-stats.startTime)/1000),
+      history: statHistory,
+      rooms: [...rooms.entries()].map(([r,u])=>({room:r,count:u.size}))
+    }));
   } else { res.writeHead(404); res.end(); }
 });
 
@@ -24,53 +53,84 @@ const wss = new WebSocketServer({ server, maxPayload: 4 * 1024 * 1024 });
 
 const send = (uid, data) => {
   const u = users.get(uid);
-  if (u && u.ws.readyState === 1) {
-    if (typeof data === 'string') u.ws.send(data);
-    else u.ws.send(JSON.stringify(data));
-  }
+  if (u && u.ws.readyState === 1) u.ws.send(typeof data==='string'?data:JSON.stringify(data));
 };
-const broadcast = (data, skip = null) => {
-  const m = typeof data === 'string' ? data : JSON.stringify(data);
-  users.forEach((u, uid) => { if (uid !== skip && u.ws.readyState === 1) u.ws.send(m); });
+const broadcast = (data, skip=null) => {
+  const m = typeof data==='string'?data:JSON.stringify(data);
+  users.forEach((u,uid) => { if(uid!==skip && u.ws.readyState===1) u.ws.send(m); });
 };
-const broadcastRoom = (room, data, skip = null) => {
-  const m = (typeof data === 'string' || Buffer.isBuffer(data)) ? data : JSON.stringify(data);
-  const r = rooms.get(room);
-  if (!r) return;
-  r.forEach(uid => { if (uid !== skip) { const u = users.get(uid); if (u && u.ws.readyState === 1) u.ws.send(m); } });
+const broadcastRoom = (room, data, skip=null) => {
+  const m = (typeof data==='string'||Buffer.isBuffer(data))?data:JSON.stringify(data);
+  const r = rooms.get(room); if(!r) return;
+  r.forEach(uid => { if(uid!==skip){const u=users.get(uid);if(u&&u.ws.readyState===1)u.ws.send(m);} });
 };
-const onlineList = () => { const o = {}; users.forEach((u, uid) => { o[uid] = { name:u.name, color:u.color, init:u.init, tag:u.tag, status:u.status||'online', activity:u.activity||'' }; }); return o; };
-const roomList = () => { const r = {}; rooms.forEach((uids, room) => { r[room] = {}; uids.forEach(uid => { const u=users.get(uid); if(u) r[room][uid]={name:u.name,color:u.color,init:u.init,speaking:u.speaking||false,screenSharing:u.screenSharing||false}; }); }); return r; };
+const onlineList = () => {
+  const o = {};
+  users.forEach((u,uid) => {
+    o[uid] = { name:u.name, color:u.color, init:u.init, tag:u.tag,
+      status:u.status||'online', activity:u.activity||'',
+      role:roles.get(uid)||'user' };
+  });
+  return o;
+};
+const roomList = () => {
+  const r = {};
+  rooms.forEach((uids,room) => {
+    r[room] = {};
+    uids.forEach(uid => {
+      const u = users.get(uid);
+      if(u) r[room][uid] = { name:u.name, color:u.color, init:u.init,
+        speaking:u.speaking||false, screenSharing:u.screenSharing||false,
+        role:roles.get(uid)||'user', ping:u.ping||0 };
+    });
+  });
+  return r;
+};
 
 wss.on('connection', ws => {
   let me = null;
+  let pingInterval = null;
+  let lastPingTime = 0;
+
+  // ── Ping measurement ──
+  pingInterval = setInterval(() => {
+    if (!me || ws.readyState !== 1) return;
+    lastPingTime = Date.now();
+    ws.ping();
+  }, 5000);
+
+  ws.on('pong', () => {
+    if (!me) return;
+    const ping = Date.now() - lastPingTime;
+    const u = users.get(me);
+    if (u) { u.ping = ping; }
+    // Broadcast ping update to room
+    const u2 = users.get(me);
+    if (u2?.room) broadcastRoom(u2.room, JSON.stringify({type:'ping_update',uid:me,ping}));
+    ws.send(JSON.stringify({type:'my_ping',ping}));
+  });
 
   ws.on('message', (raw, isBinary) => {
-    // Binary = audio chunk OR screen frame (peek at header)
     if (isBinary) {
       if (!me) return;
       const u = users.get(me);
       if (!u || !u.room) return;
 
-      // Peek at JSON header to check type
+      // Peek header
       let nl = -1;
-      for (let i = 0; i < Math.min(raw.length, 256); i++) { if (raw[i] === 10) { nl = i; break; } }
+      for (let i = 0; i < Math.min(raw.length, 256); i++) { if (raw[i]===10){nl=i;break;} }
       if (nl > 0) {
         try {
-          const hdr = JSON.parse(raw.slice(0, nl).toString('utf8'));
-          if (hdr.type === 'screen_frame') {
-            // Relay screen frame to room (already has full header+jpeg)
-            broadcastRoom(u.room, raw, me);
-            return;
-          }
+          const hdr = JSON.parse(raw.slice(0,nl).toString('utf8'));
+          if (hdr.type === 'screen_frame') { broadcastRoom(u.room, raw, me); return; }
         } catch(e) {}
       }
 
-      // Audio: wrap with header and relay
-      const header = JSON.stringify({ type:'audio', from:me, name:u.name, color:u.color });
+      // Audio relay
+      stats.audioBytes += raw.length;
+      const header = JSON.stringify({ type:'audio', from:me, name:u.name, color:u.color, ping:u.ping||0 });
       const headerBuf = Buffer.from(header + '\n');
-      const combined = Buffer.concat([headerBuf, raw]);
-      broadcastRoom(u.room, combined, me);
+      broadcastRoom(u.room, Buffer.concat([headerBuf, raw]), me);
       return;
     }
 
@@ -78,99 +138,122 @@ wss.on('connection', ws => {
 
     if (d.type === 'join') {
       me = d.uid;
-      users.set(me, { ws, name:d.name, color:d.color, init:d.init, tag:d.tag, status:'online', activity:'', speaking:false, screenSharing:false, room:null });
-      ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs }));
-      dmMsgs.forEach((m, convId) => { if(convId.includes(me)) ws.send(JSON.stringify({ type:'dm_history', convId, msgs:m })); });
-      broadcast({ type:'user_join', uid:me, user:{name:d.name,color:d.color,init:d.init,tag:d.tag,status:'online',activity:''} }, me);
-      console.log(`+ ${d.name}`);
+      const role = firstUser===null ? 'admin' : 'user';
+      if (firstUser===null) firstUser = me;
+      roles.set(me, role);
+      users.set(me, { ws, name:d.name, color:d.color, init:d.init, tag:d.tag,
+        status:'online', activity:'', speaking:false, screenSharing:false, room:null, ping:0 });
+      stats.conns++;
+      if (users.size > stats.peak) stats.peak = users.size;
+      ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role }));
+      dmMsgs.forEach((m,convId) => { if(convId.includes(me)) ws.send(JSON.stringify({type:'dm_history',convId,msgs:m})); });
+      broadcast({ type:'user_join', uid:me, user:{name:d.name,color:d.color,init:d.init,tag:d.tag,status:'online',activity:'',role} }, me);
+      console.log(`+ ${d.name} [${role}]`);
       return;
     }
     if (!me) return;
+    const myRole = roles.get(me)||'user';
 
     switch (d.type) {
       case 'chat': {
-        const m = { from:me, fromName:users.get(me)?.name, fromColor:users.get(me)?.color, fromInit:users.get(me)?.init, text:d.text, time:d.time, ts:Date.now() };
+        const m = { from:me, fromName:users.get(me)?.name, fromColor:users.get(me)?.color,
+          fromInit:users.get(me)?.init, fromRole:myRole, text:d.text, time:d.time, ts:Date.now() };
         const ch = d.channel||'general';
         if (!msgs[ch]) msgs[ch]=[];
-        msgs[ch].push(m); if(msgs[ch].length>100) msgs[ch].shift();
+        msgs[ch].push(m); if(msgs[ch].length>200) msgs[ch].shift();
+        stats.msgCount++;
         broadcast({ type:'chat', channel:ch, msg:m });
         break;
       }
       case 'dm': {
         const convId=[me,d.to].sort().join('_vs_');
-        const m={from:me,fromName:users.get(me)?.name,fromColor:users.get(me)?.color,fromInit:users.get(me)?.init,text:d.text,time:d.time,ts:Date.now()};
+        const m={from:me,fromName:users.get(me)?.name,fromColor:users.get(me)?.color,
+          fromInit:users.get(me)?.init,fromRole:myRole,text:d.text,time:d.time,ts:Date.now()};
         if(!dmMsgs.has(convId)) dmMsgs.set(convId,[]);
-        dmMsgs.get(convId).push(m);
+        const conv=dmMsgs.get(convId);
+        conv.push(m); if(conv.length>200) conv.shift();
         send(d.to,{type:'dm',convId,from:me,msg:m});
         ws.send(JSON.stringify({type:'dm_sent',convId,msg:m}));
         break;
       }
+
+      // ── Role management (admin only) ──
+      case 'set_role': {
+        if (myRole!=='admin') break;
+        const target = d.uid; const newRole = d.role;
+        if (!['admin','mod','user'].includes(newRole)) break;
+        roles.set(target, newRole);
+        const tu = users.get(target);
+        broadcast({type:'role_update', uid:target, role:newRole, name:tu?.name||target});
+        break;
+      }
+      case 'kick': {
+        if (myRole!=='admin'&&myRole!=='mod') break;
+        const tu = users.get(d.uid);
+        if (tu) { send(d.uid,{type:'kicked',by:users.get(me)?.name}); setTimeout(()=>tu.ws.close(),500); }
+        break;
+      }
+
       case 'friend_req':    send(d.to,{type:'friend_req',from:me,name:users.get(me)?.name,color:users.get(me)?.color,init:users.get(me)?.init,tag:users.get(me)?.tag}); break;
       case 'friend_accept': send(d.to,{type:'friend_accept',from:me,name:users.get(me)?.name}); break;
       case 'call':          send(d.to,{type:'incoming_call',from:me,name:users.get(me)?.name,color:users.get(me)?.color,init:users.get(me)?.init,video:d.video}); break;
       case 'call_answer':   send(d.to,{type:'call_answered',from:me}); break;
       case 'call_decline':  send(d.to,{type:'call_declined',from:me}); break;
+      case 'rtc_offer':     send(d.to,{type:'rtc_offer',from:me,sdp:d.sdp,kind:d.kind||'screen'}); break;
+      case 'rtc_answer':    send(d.to,{type:'rtc_answer',from:me,sdp:d.sdp,kind:d.kind||'screen'}); break;
+      case 'rtc_ice':       send(d.to,{type:'rtc_ice',from:me,candidate:d.candidate}); break;
 
-      // ── WebRTC signaling (screen share & peer video) ──
-      case 'rtc_offer':     send(d.to,{type:'rtc_offer',  from:me, sdp:d.sdp,  kind:d.kind||'screen'}); break;
-      case 'rtc_answer':    send(d.to,{type:'rtc_answer', from:me, sdp:d.sdp,  kind:d.kind||'screen'}); break;
-      case 'rtc_ice':       send(d.to,{type:'rtc_ice',    from:me, candidate:d.candidate}); break;
-
-      // ── Screen share state broadcast ──
       case 'screen_start': {
-        const u=users.get(me);
-        if(u){u.screenSharing=true;}
+        const u=users.get(me); if(u) u.screenSharing=true;
         broadcastRoom(u?.room||'',{type:'screen_start',uid:me,name:users.get(me)?.name},me);
-        broadcast({type:'voice_update',rooms:roomList()});
-        break;
+        broadcast({type:'voice_update',rooms:roomList()}); break;
       }
       case 'screen_stop': {
-        const u=users.get(me);
-        if(u){u.screenSharing=false;}
+        const u=users.get(me); if(u) u.screenSharing=false;
         broadcastRoom(u?.room||'',{type:'screen_stop',uid:me},me);
-        broadcast({type:'voice_update',rooms:roomList()});
-        break;
+        broadcast({type:'voice_update',rooms:roomList()}); break;
       }
-
       case 'join_voice': {
         const u=users.get(me);
         if(u?.room){const prev=rooms.get(u.room);if(prev){prev.delete(me);if(!prev.size)rooms.delete(u.room);}}
         if(!rooms.has(d.room)) rooms.set(d.room,new Set());
         rooms.get(d.room).add(me); u.room=d.room;
         broadcast({type:'voice_update',rooms:roomList()});
-        broadcastRoom(d.room,{type:'peer_joined',uid:me,name:u.name,color:u.color,init:u.init},me);
-        ws.send(JSON.stringify({type:'voice_joined',room:d.room,peers:[...rooms.get(d.room)].filter(x=>x!==me).map(uid=>{const u=users.get(uid);return{uid,name:u?.name,color:u?.color,init:u?.init,screenSharing:u?.screenSharing||false};})}));
+        broadcastRoom(d.room,{type:'peer_joined',uid:me,name:u.name,color:u.color,init:u.init,role:myRole},me);
+        ws.send(JSON.stringify({type:'voice_joined',room:d.room,
+          peers:[...rooms.get(d.room)].filter(x=>x!==me).map(uid=>{
+            const u=users.get(uid);
+            return{uid,name:u?.name,color:u?.color,init:u?.init,screenSharing:u?.screenSharing||false,role:roles.get(uid)||'user',ping:u?.ping||0};
+          })}));
         break;
       }
       case 'leave_voice': {
-        const u=users.get(me);
-        if(u){u.screenSharing=false;}
+        const u=users.get(me); if(u) u.screenSharing=false;
         if(u?.room){const r=rooms.get(u.room);if(r){r.delete(me);if(!r.size)rooms.delete(u.room);}broadcastRoom(u.room,{type:'peer_left',uid:me});u.room=null;}
-        broadcast({type:'voice_update',rooms:roomList()});
-        break;
+        broadcast({type:'voice_update',rooms:roomList()}); break;
       }
       case 'speaking': {
-        const u=users.get(me);if(u)u.speaking=d.speaking;
-        if(u?.room) broadcastRoom(u.room,{type:'speaking',uid:me,speaking:d.speaking},me);
-        break;
+        const u=users.get(me); if(u) u.speaking=d.speaking;
+        if(u?.room) broadcastRoom(u.room,{type:'speaking',uid:me,speaking:d.speaking},me); break;
       }
       case 'status': {
-        const u=users.get(me);if(u){u.status=d.status;u.activity=d.activity||'';}
-        broadcast({type:'user_update',uid:me,status:d.status,activity:d.activity||''});
-        break;
+        const u=users.get(me); if(u){u.status=d.status;u.activity=d.activity||'';}
+        broadcast({type:'user_update',uid:me,status:d.status,activity:d.activity||''}); break;
       }
     }
   });
 
   ws.on('close', () => {
-    if(!me) return;
-    const u=users.get(me);
+    clearInterval(pingInterval);
+    if (!me) return;
+    const u = users.get(me);
     if(u?.room){const r=rooms.get(u.room);if(r){r.delete(me);if(!r.size)rooms.delete(u.room);}broadcastRoom(u.room,{type:'peer_left',uid:me});}
     users.delete(me);
+    if (firstUser===me) firstUser=null;
     broadcast({type:'user_leave',uid:me});
     console.log(`- ${u?.name}`);
   });
-  ws.on('error',()=>{});
+  ws.on('error', ()=>{});
 });
 
 server.listen(PORT, () => console.log(`VoiceLink running on :${PORT}`));
