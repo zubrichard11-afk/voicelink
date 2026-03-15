@@ -49,7 +49,7 @@ const server = http.createServer((req, res) => {
   } else { res.writeHead(404); res.end(); }
 });
 
-const wss = new WebSocketServer({ server, maxPayload: 4 * 1024 * 1024 });
+const wss = new WebSocketServer({ server, maxPayload: 100 * 1024 * 1024 });
 
 const send = (uid, data) => {
   const u = users.get(uid);

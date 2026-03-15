@@ -964,6 +964,10 @@ let audioWorklet=null;
 const SAMPLE_RATE=48000;
 const CHUNK_MS=20;
 const CHUNK_SAMPLES=2048; // power of 2, ~42ms at 48kHz
+let selectedMicId='';      // '' = default
+let selectedOutputId='';   // '' = default
+let micGainValue=1.0;      // 0..2
+window._volumeGain=1.0;    // output gain
 
 // color picker
 const cp=document.getElementById('colorPicker');
@@ -1159,12 +1163,12 @@ async function startMicRelay(){
   await stopMicRelay();
 
   try{
-    micStream=await navigator.mediaDevices.getUserMedia({audio:{
-      channelCount:1,
-      echoCancellation:true,
-      noiseSuppression:true,
-      autoGainControl:true
-    },video:false});
+    const noiseOn=localStorage.getItem('vl_noise')!=='0';
+    const echoOn=localStorage.getItem('vl_echo')!=='0';
+    const agcOn=localStorage.getItem('vl_agc')!=='0';
+    const audioConstraints={channelCount:1,echoCancellation:echoOn,noiseSuppression:noiseOn,autoGainControl:agcOn};
+    if(selectedMicId) audioConstraints.deviceId={exact:selectedMicId};
+    micStream=await navigator.mediaDevices.getUserMedia({audio:audioConstraints,video:false});
   }catch(e){
     toast('Микрофон','🎙','Нет доступа к микрофону: '+e.message,'error');
     return false;
@@ -1186,17 +1190,24 @@ async function startMicRelay(){
   URL.revokeObjectURL(blobUrl);
 
   const src=audioCtx.createMediaStreamSource(micStream);
+  // Mic gain node — controlled by settings slider
+  const micGainNode=audioCtx.createGain();
+  micGainNode.gain.value=micGainValue;
+  window._micGainNode=micGainNode;
+  src.connect(micGainNode);
   micProcessor=new AudioWorkletNode(audioCtx,'mic-sender');
-  src.connect(micProcessor);
+  micGainNode.connect(micProcessor);
   // Worklet не нужно подключать к destination, просто порт
   micProcessor.port.onmessage=e=>{
     if(!inVoice) return;
     if(pttMode&&!pttHeld) return;
     if(micMuted) return;
     const f32=e.data;
-    // VAD
+    // VAD with configurable threshold
+    const vadThresh=(parseFloat(localStorage.getItem('vl_thresh')||'2'))/1000;
+    const vadOn=localStorage.getItem('vl_vad')!=='0';
     let vol=0; for(let i=0;i<f32.length;i++) vol+=Math.abs(f32[i]); vol/=f32.length;
-    const spk=vol>0.008;
+    const spk=!vadOn||vol>vadThresh;
     // Convert to Int16 and send
     const i16=new Int16Array(f32.length);
     for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
@@ -1490,7 +1501,7 @@ window.sendFile=function(input, ctx, target){
   const file=input.files[0];
   if(!file) return;
   input.value='';
-  const maxMB=10;
+  const maxMB=100;
   if(file.size>maxMB*1024*1024){toast('Файл','📎','Максимум '+maxMB+'МБ','error');return;}
 
   const reader=new FileReader();
@@ -1862,7 +1873,11 @@ window.joinVoice=function(room, peerId){
   }
   // call-panel removed — voice shown in sidebar vbar
   wsSend({type:'join_voice',room});
-  getRemoteCtx();
+  // Create/resume remote audio context inside user gesture (critical for autoplay policy)
+  if(!remoteCtx){
+    remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE,latencyHint:'interactive'});
+  }
+  remoteCtx.resume().catch(()=>{});
   startMicRelay().then(ok=>{
     if(!ok) toast('Голосовой','🔊','В канале (без микрофона)','info');
   });
@@ -1911,11 +1926,6 @@ function updateCallPanel(){
   ).join('');
   el.innerHTML=html;
 }
-
-window.setVolume=function(val){
-  window._volumeGain=val/100;
-  document.querySelectorAll('.cw-vol-wrap input').forEach(el=>el.value=val);
-};
 
 window.toggleScreenShare=async function(){
   if(screenSharing){ stopScreenShare(); return; }
@@ -2396,10 +2406,14 @@ window.toggleDeaf=function(){
   if(deafMuted&&!micMuted) toggleMic();
 };
 window.setVolume=function(val){
-  const gain=val/100;
-  // apply to all playing audio nodes via gainNode if we had one - for now just store
+  const gain=parseFloat(val)/100;
   window._volumeGain=gain;
-  document.getElementById('cpVolume').value=val;
+  localStorage.setItem('vl_out_vol',val);
+  // Apply immediately to all active peer audio nodes
+  peerAudio.forEach(state=>{ if(state.gainNode) state.gainNode.gain.value=gain; });
+  // Sync all volume sliders
+  ['cpVolume','sOutVol'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=val;});
+  const vv=document.getElementById('sOutVolVal');if(vv)vv.textContent=val+'%';
 };
 window.toggleScreen=function(){
   const btn=document.getElementById('cpScreen');
@@ -2840,7 +2854,7 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
         <div class="s-section">
           <div class="s-section-title">Устройства вывода</div>
           <div class="s-row-label" style="margin-bottom:4px">Динамики / Наушники</div>
-          <select class="s-select" id="sSpeakerSelect">
+          <select class="s-select" id="sSpeakerSelect" onchange="changeSpeakerDevice(this.value)">
             <option value="">По умолчанию</option>
           </select>
           <button class="s-device-test" onclick="testSpeaker()">▶ Проверить звук</button>
@@ -3209,7 +3223,23 @@ let keybinds={...DEFAULT_KB};
 let kbRebinding=null;
 
 function loadAllSettings(){
-  // Audio
+  // Audio devices — load saved IDs and enumerate
+  selectedMicId=localStorage.getItem('vl_mic_id')||'';
+  selectedOutputId=localStorage.getItem('vl_out_id')||'';
+  loadAudioDevices();
+
+  // Mic volume
+  const micVol=localStorage.getItem('vl_mic_vol')||'100';
+  micGainValue=parseFloat(micVol)/100;
+  if(window._micGainNode) window._micGainNode.gain.value=micGainValue;
+  const mvEl=document.getElementById('sMicVol');const mvValEl=document.getElementById('sMicVolVal');
+  if(mvEl)mvEl.value=micVol;if(mvValEl)mvValEl.textContent=micVol+'%';
+
+  // Output volume
+  const outVol=localStorage.getItem('vl_out_vol')||'100';
+  window._volumeGain=parseFloat(outVol)/100;
+  const ovEl=document.getElementById('sOutVol');const ovValEl=document.getElementById('sOutVolVal');
+  if(ovEl)ovEl.value=outVol;if(ovValEl)ovValEl.textContent=outVol+'%';
   const load=(k,id,def)=>{const v=localStorage.getItem(k);if(v!==null&&document.getElementById(id))document.getElementById(id).checked=v==='1';};
   load('vl_noise','sNoise');load('vl_echo','sEcho');load('vl_agc','sAGC');load('vl_vad','sVAD');
   const thresh=localStorage.getItem('vl_thresh');
@@ -3349,7 +3379,8 @@ let _dashInterval=null;
 window.closeSettings=function(){
   document.getElementById('settingsBg').style.display='none';
   if(kbRebinding){stopRebind();}
-  clearInterval(_dashInterval);_dashInterval=null; 
+  clearInterval(_dashInterval);_dashInterval=null;
+  stopMicLevelMeter();
 };
 
 window.showSPage=function(id,btn){
@@ -3361,6 +3392,8 @@ window.showSPage=function(id,btn){
   if(id==='dashboard'){clearInterval(_dashInterval);refreshDashboard();_dashInterval=setInterval(refreshDashboard,5000);}
   else{clearInterval(_dashInterval);_dashInterval=null;}
   if(id==='roles') renderRolesList();
+  if(id==='voice'){ loadAudioDevices(); startMicLevelMeter(); }
+  else stopMicLevelMeter();
 };
 
 // ── Audio settings ──
@@ -3372,6 +3405,110 @@ window.saveAudioSettings=function(){
   const t=document.getElementById('sVADThresh')?.value;
   if(t)localStorage.setItem('vl_thresh',t);
   toast('Настройки','⚙','Сохранено','success');
+  // Restart mic if in voice to apply new constraints
+  if(inVoice&&micStream) startMicRelay();
+};
+
+// ── Audio device enumeration ──
+window.loadAudioDevices=async function(){
+  try{
+    // Need permission first to get labels
+    await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>{s.getTracks().forEach(t=>t.stop());}).catch(()=>{});
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const mics=devices.filter(d=>d.kind==='audioinput');
+    const speakers=devices.filter(d=>d.kind==='audiooutput');
+
+    const micSel=document.getElementById('sMicSelect');
+    const spkSel=document.getElementById('sSpeakerSelect');
+    if(micSel){
+      const cur=selectedMicId;
+      micSel.innerHTML='<option value="">По умолчанию</option>'+
+        mics.map(d=>`<option value="${d.deviceId}"${d.deviceId===cur?' selected':''}>${d.label||'Микрофон '+d.deviceId.slice(0,8)}</option>`).join('');
+    }
+    if(spkSel){
+      const cur=selectedOutputId;
+      // setSinkId support check
+      const hasSink=typeof HTMLMediaElement.prototype.setSinkId==='function';
+      if(!hasSink){
+        spkSel.innerHTML='<option value="">По умолчанию (браузер не поддерживает выбор)</option>';
+        spkSel.disabled=true;
+      } else {
+        spkSel.innerHTML='<option value="">По умолчанию</option>'+
+          speakers.map(d=>`<option value="${d.deviceId}"${d.deviceId===cur?' selected':''}>${d.label||'Динамики '+d.deviceId.slice(0,8)}</option>`).join('');
+        spkSel.onchange=function(){changeSpeakerDevice(this.value);};
+      }
+    }
+  }catch(e){console.warn('loadAudioDevices:',e);}
+};
+
+window.changeMicDevice=function(deviceId){
+  selectedMicId=deviceId||'';
+  localStorage.setItem('vl_mic_id',selectedMicId);
+  // Restart mic relay immediately if in voice
+  if(inVoice&&micStream){
+    startMicRelay().then(ok=>{if(ok)toast('Микрофон','🎙','Устройство изменено','success');});
+  } else {
+    toast('Микрофон','🎙','Будет применено при следующем входе','info');
+  }
+};
+
+window.changeSpeakerDevice=function(deviceId){
+  selectedOutputId=deviceId||'';
+  localStorage.setItem('vl_out_id',selectedOutputId);
+  // Apply to all audio elements on page
+  document.querySelectorAll('audio,video').forEach(el=>{
+    if(typeof el.setSinkId==='function') el.setSinkId(selectedOutputId).catch(()=>{});
+  });
+  toast('Динамики','🔊','Устройство изменено','success');
+};
+
+window.setMicVolume=function(val){
+  micGainValue=parseFloat(val)/100;
+  if(window._micGainNode) window._micGainNode.gain.value=micGainValue;
+  localStorage.setItem('vl_mic_vol',val);
+  const el=document.getElementById('sMicVolVal');
+  if(el) el.textContent=val+'%';
+};
+
+window.testSpeaker=function(){
+  try{
+    const ctx=new AudioContext();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(440,ctx.currentTime);
+    gain.gain.setValueAtTime(0.3,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.8);
+    osc.start(); osc.stop(ctx.currentTime+0.8);
+    osc.onended=()=>ctx.close();
+    toast('Динамики','🔊','Тест звука','info');
+  }catch(e){}
+};
+
+// Mic level meter when settings open
+let _micLevelTimer=null;
+window.startMicLevelMeter=function(){
+  stopMicLevelMeter();
+  _micLevelTimer=setInterval(async()=>{
+    const el=document.getElementById('sMicLevel');
+    if(!el){stopMicLevelMeter();return;}
+    try{
+      if(audioCtx&&micStream){
+        // Use existing stream
+        const analyser=audioCtx.createAnalyser();
+        const src2=audioCtx.createMediaStreamSource(micStream);
+        src2.connect(analyser);
+        const buf=new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(buf);
+        const avg=buf.reduce((a,b)=>a+b,0)/buf.length;
+        el.style.width=Math.min(100,avg/128*100)+'%';
+        src2.disconnect();
+      }
+    }catch(e){}
+  },100);
+};
+window.stopMicLevelMeter=function(){
+  clearInterval(_micLevelTimer);_micLevelTimer=null;
 };
 
 // ── Appearance ──
