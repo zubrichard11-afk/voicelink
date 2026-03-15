@@ -779,17 +779,6 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
 <div class="main" id="mainArea"></div>
 </div>
 
-<div class="vbar" id="vbar">
-  <div class="vbar-room" id="vbarRoom">🔊 Gaming Lounge</div>
-  <div class="vbar-stat">Голосовой · relay · <span class="ping-tag" id="vbarPing">—</span></div>
-  <div class="vbar-users" id="vbarUsers"></div>
-  <div class="vbar-btns">
-    <button class="vb-btn" id="vbMic" onclick="toggleMic()">🎙 Mic</button>
-    <button class="vb-btn" id="vbSnd" onclick="toggleDeaf()">🎧</button>
-    <button class="vb-leave" onclick="leaveVoice()">✕ Выйти</button>
-  </div>
-</div>
-
 <div class="pp" id="pp">
   <div class="pp-banner" id="ppBanner"></div>
   <div style="position:relative;height:28px"><div class="pp-av-wrap" id="ppAvWrap"></div></div>
@@ -1012,7 +1001,7 @@ function connectWS(){
   showStatus('Подключаемся...','connecting');
 
   ws.onopen=()=>{
-    ws.send(JSON.stringify({type:'join',uid:myUid,name:ME.name,color:ME.color,init:ME.init,tag:ME.tag}));
+    ws.send(JSON.stringify({type:'join',uid:myUid,name:ME.name,color:ME.color,init:ME.init,tag:ME.tag,sampleRate:SAMPLE_RATE}));
     showStatus('Подключено ✓','connected');
     setTimeout(hideStatus,2000);
     setWsDot('green');
@@ -1057,7 +1046,9 @@ function handleWS(d){
       Object.assign(window._userCache, onlineUsers);
       if(d.msgs){srvMsgs.general=d.msgs.general||[];srvMsgs.gaming=d.msgs.gaming||[];srvMsgs.dev=d.msgs.dev||[];}
       renderDMList();renderVCUsers();
-      if(currentView.startsWith('srv:')) renderSrvMsgs(currentSrvCh);
+      // Refresh current view with real data
+      if(currentView==='friends') showFriends();
+      else if(currentView.startsWith('srv:')) renderSrvMsgs(currentSrvCh);
       break;
     case 'user_join':
       onlineUsers[d.uid]=d.user;
@@ -1294,9 +1285,11 @@ function cleanupPeerAudio(uid){
 // Resume audio context on any user interaction
 function ensureAudioResumed(){
   if(remoteCtx&&remoteCtx.state==='suspended') remoteCtx.resume().catch(()=>{});
+  if(audioCtx&&audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
 }
-document.addEventListener('click', ensureAudioResumed, {once:false});
-document.addEventListener('keydown', ensureAudioResumed, {once:false});
+['click','keydown','pointerdown','touchstart'].forEach(ev=>
+  document.addEventListener(ev, ensureAudioResumed, {passive:true})
+);
 function handleAudioChunk(buf){
   if(deafMuted) return;
   const bytes=new Uint8Array(buf);
@@ -1306,10 +1299,12 @@ function handleAudioChunk(buf){
   if(nl<0) return;
   // Parse header
   let fromUid=null;
+  let peerSampleRate=SAMPLE_RATE;
   try{
     const headerStr=new TextDecoder().decode(bytes.slice(0,nl));
     const header=JSON.parse(headerStr);
     fromUid=header.from;
+    peerSampleRate=header.sr||SAMPLE_RATE;
   }catch(e){
     return; // invalid header, skip
   }
@@ -1323,16 +1318,14 @@ function handleAudioChunk(buf){
   for(let i=0;i<i16.length;i++) f32[i]=i16[i]/32767;
   const ctx=getRemoteCtx();
   const state=getPeerState(fromUid);
-  // Update gain in case volume changed
   state.gainNode.gain.value=window._volumeGain||1;
-  const abuf=ctx.createBuffer(1,f32.length,SAMPLE_RATE);
+  const abuf=ctx.createBuffer(1,f32.length,peerSampleRate);
   abuf.copyToChannel(f32,0);
   const src=ctx.createBufferSource();
   src.buffer=abuf;
   src.connect(state.gainNode);
-  // Schedule: if we're behind, snap to now + small buffer; otherwise queue
   const now=ctx.currentTime;
-  const BUFFER_AHEAD=0.06; // 60ms buffer ahead
+  const BUFFER_AHEAD=0.06;
   if(state.nextTime < now + 0.001){
     state.nextTime = now + BUFFER_AHEAD;
   }
@@ -1386,9 +1379,9 @@ function launchApp(){
     dot.style.cssText='position:absolute;bottom:-1px;right:-1px;width:11px;height:11px;border-radius:50%;background:var(--green);border:2px solid var(--bg1)';
     el.appendChild(dot);
   });
-  document.getElementById('myNameEl').textContent=ME.name;
-  document.getElementById('myTagEl').textContent=ME.tag;
-  document.getElementById('myNameSrv').textContent=ME.name;
+  const myNameEl=document.getElementById('myNameEl');if(myNameEl)myNameEl.textContent=ME.name;
+  const myTagEl=document.getElementById('myTagEl');if(myTagEl)myTagEl.textContent=ME.tag;
+  const myNameSrv=document.getElementById('myNameSrv');if(myNameSrv)myNameSrv.textContent=ME.name;
   showFriends();
   setInterval(()=>{if(inVoice){const el=document.getElementById('vbarPing');if(el)el.textContent=(20+Math.floor(Math.random()*30))+'ms';}},3000);
 

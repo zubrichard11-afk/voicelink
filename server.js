@@ -128,7 +128,7 @@ wss.on('connection', ws => {
 
       // Audio relay
       stats.audioBytes += raw.length;
-      const header = JSON.stringify({ type:'audio', from:me, name:u.name, color:u.color, ping:u.ping||0 });
+      const header = JSON.stringify({ type:'audio', from:me, name:u.name, color:u.color, ping:u.ping||0, sr:u.sampleRate||48000 });
       const headerBuf = Buffer.from(header + '\n');
       broadcastRoom(u.room, Buffer.concat([headerBuf, raw]), me);
       return;
@@ -142,7 +142,7 @@ wss.on('connection', ws => {
       if (firstUser===null) firstUser = me;
       roles.set(me, role);
       users.set(me, { ws, name:d.name, color:d.color, init:d.init, tag:d.tag,
-        status:'online', activity:'', speaking:false, screenSharing:false, room:null, ping:0 });
+        status:'online', activity:'', speaking:false, screenSharing:false, room:null, ping:0, sampleRate:d.sampleRate||48000 });
       stats.conns++;
       if (users.size > stats.peak) stats.peak = users.size;
       ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role }));
