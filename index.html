@@ -293,8 +293,8 @@ input,textarea{font-family:var(--font)}
 .ci-dec{background:var(--red);color:#fff}.ci-dec:hover{background:#c0282b;transform:scale(1.05)}
 
 
-/* ══ CALL WINDOW — Discord style full overlay ══ */
-.cw{position:fixed;top:0;left:72px;right:0;bottom:0;background:#1a1b1e;z-index:200;display:none;flex-direction:column}
+/* ══ CALL WINDOW — Discord style top panel (45% of main area) ══ */
+.cw{display:none;flex-direction:column;flex-shrink:0;height:45vh;min-height:280px;background:#1a1b1e;border-bottom:2px solid rgba(255,255,255,.07);position:relative;overflow:hidden}
 .cw.vis{display:flex}
 /* Top bar — thin info strip */
 .cw-top{display:flex;align-items:center;padding:0 20px;height:48px;background:#111214;flex-shrink:0;gap:12px;border-bottom:1px solid rgba(255,255,255,.05)}
@@ -1265,10 +1265,18 @@ const peerAudio = new Map();
 
 function getRemoteCtx(){
   if(!remoteCtx){
-    remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE,latencyHint:'interactive'});
+    // Create without sampleRate — let browser pick native rate, we resample in buffer
+    try{
+      remoteCtx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+    }catch(e){
+      remoteCtx=new (window.AudioContext||window.webkitAudioContext)();
+    }
+    console.log('[VL Audio] remoteCtx created, sampleRate='+remoteCtx.sampleRate+', state='+remoteCtx.state);
   }
   if(remoteCtx.state==='suspended'||remoteCtx.state==='interrupted'){
-    remoteCtx.resume().catch(()=>{});
+    remoteCtx.resume().then(()=>{
+      console.log('[VL Audio] remoteCtx resumed, state='+remoteCtx.state);
+    }).catch(e=>console.warn('[VL Audio] resume failed:',e));
   }
   return remoteCtx;
 }
@@ -1312,27 +1320,35 @@ function handleAudioChunk(buf){
     fromUid=header.from;
     peerSampleRate=header.sr||SAMPLE_RATE;
   }catch(e){
-    return; // invalid header, skip
+    return;
   }
-  // Never play own audio back
   if(fromUid===myUid) return;
-  // Play audio with per-peer jitter buffer (smooth, no gaps/overlaps)
   const pcmBuf=buf.slice(nl+1);
   if(pcmBuf.byteLength<2) return;
   const i16=new Int16Array(pcmBuf);
   const f32=new Float32Array(i16.length);
   for(let i=0;i<i16.length;i++) f32[i]=i16[i]/32767;
   const ctx=getRemoteCtx();
+  if(!ctx) return;
+  // Must resume before playing (Яндекс/Chrome autoplay policy)
+  if(ctx.state==='suspended'){ctx.resume().catch(()=>{});return;}
   const state=getPeerState(fromUid);
   state.gainNode.gain.value=window._volumeGain||1;
-  const abuf=ctx.createBuffer(1,f32.length,peerSampleRate);
+  // createBuffer with peerSampleRate — browser resamples automatically to ctx.sampleRate
+  let abuf;
+  try{
+    abuf=ctx.createBuffer(1,f32.length,peerSampleRate);
+  }catch(e){
+    // Some browsers don't support arbitrary sampleRate — use ctx native rate
+    abuf=ctx.createBuffer(1,f32.length,ctx.sampleRate);
+  }
   abuf.copyToChannel(f32,0);
   const src=ctx.createBufferSource();
   src.buffer=abuf;
   src.connect(state.gainNode);
   const now=ctx.currentTime;
-  const BUFFER_AHEAD=0.06;
-  if(state.nextTime < now + 0.001){
+  const BUFFER_AHEAD=0.08; // 80ms — slightly more for stability
+  if(state.nextTime < now + 0.005){
     state.nextTime = now + BUFFER_AHEAD;
   }
   src.start(state.nextTime);
@@ -1871,10 +1887,16 @@ window.joinVoice=function(room, peerId){
   // call-panel removed — voice shown in sidebar vbar
   wsSend({type:'join_voice',room});
   // Create/resume remote audio context inside user gesture (critical for autoplay policy)
-  if(!remoteCtx){
-    remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE,latencyHint:'interactive'});
-  }
-  remoteCtx.resume().catch(()=>{});
+  // Use getRemoteCtx() which creates WITHOUT sampleRate constraint for max compatibility
+  const rctx=getRemoteCtx();
+  rctx.resume().then(()=>{
+    console.log('[VL Audio] joinVoice ctx state='+rctx.state+', sampleRate='+rctx.sampleRate);
+    if(rctx.state!=='running'){
+      toast('Аудио','⚠️','AudioContext не запущен: '+rctx.state,'error');
+    }
+  }).catch(e=>{
+    toast('Аудио','⚠️','Не удалось запустить звук: '+e.message,'error');
+  });
   startMicRelay().then(ok=>{
     if(!ok) toast('Голосовой','🔊','В канале (без микрофона)','info');
   });
@@ -2237,6 +2259,19 @@ function openCallWindow(title, subtitle){
   const cw=document.getElementById('callWindow');
   if(title) document.getElementById('cwTitle').textContent=title;
   if(subtitle) document.getElementById('cwSubtitle').textContent=subtitle;
+  // Move callWindow into mainArea as the top flex item
+  const main=document.getElementById('mainArea');
+  if(main && cw.parentElement !== main){
+    main.insertBefore(cw, main.firstChild);
+  }
+  // Make mainArea flex-column so call sits above chat
+  if(main){
+    main.style.display='flex';
+    main.style.flexDirection='column';
+  }
+  // Make the existing chat content flex-shrink and scroll properly
+  const chatContent=main?.querySelector('.friends-wrap, .dm-wrap, .srv-wrap, [id="dmMsgs"], [id="srvMsgs"]');
+  if(chatContent) chatContent.style.flex='1';
   cw.classList.add('vis');
   updateCallWindow();
 }
@@ -2324,11 +2359,20 @@ window.leaveVoice=async function(){
   inVoice=false;
   wsSend({type:'leave_voice'});
   await stopMicRelay();
-  // Cleanup all peer audio nodes
   peerAudio.forEach((_,uid)=>cleanupPeerAudio(uid));
   peerAudio.clear();
   document.getElementById('vbar').classList.remove('vis');
-  const cw=document.getElementById('callWindow');if(cw){cw.classList.remove('vis');cw.style.cssText='';}
+  const cw=document.getElementById('callWindow');
+  if(cw){
+    cw.classList.remove('vis');
+    // Move cw back out of mainArea to body (its original home)
+    if(cw.parentElement?.id==='mainArea'){
+      document.body.appendChild(cw);
+      // Restore mainArea
+      const main=document.getElementById('mainArea');
+      if(main){main.style.display='';main.style.flexDirection='';}
+    }
+  }
   const wgt=document.getElementById('voiceWidget');if(wgt)wgt.style.display='none';
   stopScreenShare();
   toast('Голосовой','👋','Вы вышли','info');
