@@ -294,7 +294,7 @@ input,textarea{font-family:var(--font)}
 
 
 /* CALL WINDOW */
-.cw{position:fixed;right:20px;bottom:80px;width:380px;min-height:220px;max-height:70vh;background:#111217;border-radius:14px;z-index:300;display:none;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.08);overflow:hidden;resize:both}
+.cw{position:fixed;top:52px;right:0;width:340px;height:calc(100vh - 52px);background:#111217;z-index:250;display:none;flex-direction:column;border-left:1px solid rgba(255,255,255,.06)}
 .cw.vis{display:flex}
 .cw-top{display:flex;align-items:center;padding:10px 14px;background:rgba(0,0,0,.3);flex-shrink:0;gap:10px;border-bottom:1px solid rgba(255,255,255,.06)}
 .cw-title{font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;gap:6px}
@@ -886,39 +886,27 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
 
 <!-- CALL WINDOW -->
 <div class="cw" id="callWindow">
-  <div class="cw-top">
-    <div>
+  <div class="cw-top" style="user-select:none">
+    <div style="flex:1;min-width:0">
       <div class="cw-title" id="cwTitle">Голосовой звонок</div>
-      <div class="cw-subtitle" id="cwSubtitle">Подключение...</div>
+      <div class="cw-subtitle" id="cwSubtitle" style="font-size:11px;color:rgba(35,165,90,.8)">Подключение...</div>
     </div>
-    <div class="cw-pip">
-      <button class="cw-pip-btn" onclick="toggleCWSize()" title="Свернуть">⊡</button>
-    </div>
+    <button onclick="toggleCWSize()" title="Скрыть" style="background:none;border:none;color:#72767d;font-size:18px;cursor:pointer;padding:0 2px;line-height:1">×</button>
   </div>
   <div style="display:flex;flex:1;overflow:hidden">
     <div class="cw-body" id="cwBody"></div>
     <div class="cw-participants-side" id="cwSide"></div>
   </div>
   <div class="cw-bar">
-    <div class="cw-vol-wrap">
-      <input type="range" min="0" max="200" value="100" oninput="setVolume(this.value)">
-      <div class="cw-vol-label">Громкость</div>
+    <div class="cw-vol-wrap" title="Громкость">
+      <span style="font-size:12px;color:#72767d">🔊</span>
+      <input type="range" min="0" max="200" value="100" oninput="setVolume(this.value)" style="width:80px">
     </div>
-    <button class="cw-btn cw-screen-btn" id="cwScreenBtn" onclick="toggleScreenShare()" style="position:relative">
-      🖥<span class="cw-btn-label">Демонстрация</span>
-    </button>
-    <button class="cw-btn cw-mic" id="cwMicBtn" onclick="toggleMic()" style="position:relative">
-      🎙<span class="cw-btn-label">Микрофон</span>
-    </button>
-    <button class="cw-btn cw-end" onclick="leaveVoice()" style="position:relative">
-      📵<span class="cw-btn-label">Завершить</span>
-    </button>
-    <button class="cw-btn cw-deaf" id="cwDeafBtn" onclick="toggleDeaf()" style="position:relative">
-      🎧<span class="cw-btn-label">Звук</span>
-    </button>
-    <button class="cw-btn cw-screen-btn" onclick="document.getElementById('callWindow').classList.remove('vis')" style="position:relative;background:rgba(255,255,255,.08)">
-      ⊟<span class="cw-btn-label">Скрыть</span>
-    </button>
+    <button class="cw-btn cw-screen-btn" id="cwScreenBtn" onclick="toggleScreenShare()" title="Демонстрация экрана">🖥</button>
+    <button class="cw-btn cw-mic" id="cwMicBtn" onclick="toggleMic()" title="Микрофон">🎙</button>
+    <button class="cw-btn cw-deaf" id="cwDeafBtn" onclick="toggleDeaf()" title="Звук">🎧</button>
+    <button class="cw-btn cw-end" onclick="leaveVoice()" title="Завершить звонок" style="background:rgba(237,66,69,.3);border-color:rgba(237,66,69,.4)">📵</button>
+    <button class="cw-btn" onclick="toggleCWSize()" title="Скрыть" style="background:rgba(255,255,255,.08)">✕</button>
   </div>
 </div>
 
@@ -1216,7 +1204,8 @@ function stopMicRelay(){
 let remoteCtx=null;
 function getRemoteCtx(){
   if(!remoteCtx){
-    remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
+    // Must match sender's 48kHz — not SAMPLE_RATE (16kHz)
+    remoteCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000,latencyHint:'interactive'});
   }
   if(remoteCtx.state==='suspended'||remoteCtx.state==='interrupted'){
     remoteCtx.resume().catch(()=>{});
@@ -1255,7 +1244,7 @@ function handleAudioChunk(buf){
   const gain=window._volumeGain||1;
   for(let i=0;i<i16.length;i++) f32[i]=(i16[i]/32767)*gain;
   const ctx=getRemoteCtx();
-  const abuf=ctx.createBuffer(1,f32.length,SAMPLE_RATE);
+  const abuf=ctx.createBuffer(1,f32.length,48000);
   abuf.copyToChannel(f32,0);
   const src=ctx.createBufferSource();
   src.buffer=abuf;
@@ -1317,6 +1306,10 @@ function launchApp(){
 
   // Init servers
   if(servers.size===0) initDefaultServers();
+  // Ensure DM sidebar is visible and friends page shown by default
+  document.getElementById('dmSidebar').style.display='flex';
+  document.getElementById('srvSidebar').style.display='none';
+  showFriends();
 }
 
 // ══════════════════════════════════════
@@ -1428,7 +1421,7 @@ window.sendFile=function(input, ctx, target){
       ? `<div style="margin-top:4px"><img src="${dataUrl}" style="max-width:320px;max-height:240px;border-radius:8px;cursor:pointer;display:block" onclick="window.open('${dataUrl}')"></div>`
       : isAudio
         ? `<div style="margin-top:4px"><audio controls style="max-width:300px"><source src="${dataUrl}" type="${file.type}"></audio></div>`
-        : `<div style="margin-top:4px;display:inline-flex;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:8px 12px;cursor:pointer" onclick="downloadDataUrl('${dataUrl}','${esc(file.name)}')"><span style="font-size:20px">📎</span><div><div style="font-size:13px;font-weight:600;color:var(--text0)">${esc(file.name)}</div><div style="font-size:11px;color:var(--text2)">${(file.size/1024).toFixed(0)} KB</div></div></div>`;
+        : `<div style="margin-top:6px;display:inline-flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;cursor:pointer;max-width:320px;transition:background .15s" onclick="downloadDataUrl('${dataUrl}','${esc(file.name)}')" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='var(--bg2)'"><span style="font-size:24px">📎</span><div style="min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(file.name)}</div><div style="font-size:11px;color:var(--text2);margin-top:2px">${(file.size/1024).toFixed(0)} КБ · Нажми чтобы скачать</div></div></div>`;
 
     const now=new Date();
     const time=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
@@ -1469,16 +1462,23 @@ function startVoiceMsg(ctx, target){
     voiceRecorder=new MediaRecorder(stream,{mimeType:'audio/webm'});
     voiceRecorder.ondataavailable=e=>{if(e.data.size>0)voiceChunks.push(e.data);};
     voiceRecorder.onstop=()=>{
+      const recDuration=Math.round((Date.now()-voiceStart)/1000);
       stream.getTracks().forEach(t=>t.stop());
       const blob=new Blob(voiceChunks,{type:'audio/webm'});
       const reader=new FileReader();
       reader.onload=e=>{
         const dataUrl=e.target.result;
-        const dur=Math.round((Date.now()-voiceStart)/1000);
-        const msgText=`<div style="margin-top:4px;display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:20px;padding:6px 12px;max-width:280px">
-          <span style="font-size:18px">🎤</span>
-          <audio controls style="flex:1;height:32px;min-width:0"><source src="${dataUrl}" type="audio/webm"></audio>
-          <span style="font-size:11px;color:var(--text2);flex-shrink:0">${dur}с</span>
+        const dur=recDuration||1;
+        const msgText=`<div style="margin-top:6px;display:inline-flex;align-items:center;gap:10px;background:rgba(88,101,242,.15);border:1px solid rgba(88,101,242,.3);border-radius:24px;padding:8px 14px;max-width:320px">
+          <button onclick="(function(b){const a=b.parentElement.querySelector('audio');if(a.paused){a.play();b.textContent='⏸';}else{a.pause();b.textContent='▶';}})(this)" style="width:36px;height:36px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:14px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">▶</button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Голосовое сообщение</div>
+            <div style="height:20px;background:rgba(255,255,255,.1);border-radius:10px;overflow:hidden;position:relative">
+              <div style="position:absolute;inset:0;background:linear-gradient(90deg,var(--accent) 0%,rgba(88,101,242,.3) 100%);transform:scaleX(0);transform-origin:left;transition:transform .1s" id="vmProg_${Date.now()}"></div>
+            </div>
+          </div>
+          <span style="font-size:12px;color:var(--text2);flex-shrink:0">${dur}с</span>
+          <audio style="display:none"><source src="${dataUrl}" type="audio/webm"></audio>
         </div>`;
         const now=new Date();
         const time=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
@@ -2108,16 +2108,14 @@ function rtcHandleAnswer(fromUid,sdp){}
 function rtcHandleIce(fromUid,candidate){}
 
 window.toggleCWSize=function(){
-  cwMinimized=!cwMinimized;
   const cw=document.getElementById('callWindow');
-  if(cwMinimized){ cw.style.width='320px';cw.style.height='200px';cw.style.top='auto';cw.style.bottom='80px';cw.style.right='20px';cw.style.left='auto';cw.style.position='fixed'; }
-  else{ cw.style.cssText=''; }
+  cw.classList.remove('vis');
 };
 
 function openCallWindow(title, subtitle){
   const cw=document.getElementById('callWindow');
-  document.getElementById('cwTitle').textContent=title;
-  document.getElementById('cwSubtitle').textContent=subtitle;
+  if(title) document.getElementById('cwTitle').textContent=title;
+  if(subtitle) document.getElementById('cwSubtitle').textContent=subtitle;
   cw.classList.add('vis');
   updateCallWindow();
 }
@@ -3650,25 +3648,7 @@ window.confirmLogout=function(){
 // ── Init ──
 document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.s-page').forEach(p=>p.style.display='none');
-  // Make call window draggable
-  const cw=document.getElementById('callWindow');
-  const cwTop=cw?.querySelector('.cw-top');
-  if(cw&&cwTop){
-    let dx=0,dy=0,dragging=false;
-    cwTop.style.cursor='move';
-    cwTop.addEventListener('mousedown',e=>{
-      dragging=true;
-      const r=cw.getBoundingClientRect();
-      dx=e.clientX-r.left; dy=e.clientY-r.top;
-      cw.style.right='auto';
-    });
-    document.addEventListener('mousemove',e=>{
-      if(!dragging)return;
-      cw.style.left=Math.max(0,Math.min(window.innerWidth-200,e.clientX-dx))+'px';
-      cw.style.top=Math.max(0,Math.min(window.innerHeight-100,e.clientY-dy))+'px';
-    });
-    document.addEventListener('mouseup',()=>dragging=false);
-  }
+  // call window is static right panel
   // Apply saved appearance on load
   const accent=localStorage.getItem('vl_accent');
   if(accent)applyAccentColor(accent,false);
