@@ -463,19 +463,23 @@ input,textarea{font-family:var(--font)}
   <div id="srvSidebar" style="display:none;flex-direction:column;height:100%;overflow:hidden">
     <div class="sb-head"><span class="sb-title" id="srvSbName">VoiceLink HQ</span></div>
     <div class="sb-body">
-      <div class="ch-sec-lbl"><span>▾ Текстовые</span><button class="ch-add">+</button></div>
-      <button class="ch-item act" id="chGeneral" onclick="openSrvCh(this,'general','Основной чат')"><span class="ch-icon">#</span><span class="ch-name">general</span></button>
-      <button class="ch-item" onclick="openSrvCh(this,'gaming','Игры и стримы')"><span class="ch-icon">#</span><span class="ch-name">gaming</span></button>
-      <button class="ch-item" onclick="openSrvCh(this,'dev','Разработка')"><span class="ch-icon">#</span><span class="ch-name">dev</span></button>
-      <div class="ch-sec-lbl"><span>▾ Голосовые</span><button class="ch-add">+</button></div>
-      <button class="ch-item vc-item" onclick="joinVoice('Gaming Lounge')">
-        <div class="vc-row"><span class="ch-icon">🔊</span><span class="ch-name">Gaming Lounge</span><span style="font-size:10px;color:var(--text2)" id="vcCount1">0/32</span></div>
-        <div class="vc-users" id="vcUsers1"></div>
-      </button>
-      <button class="ch-item vc-item" onclick="joinVoice('Chill Zone')">
-        <div class="vc-row"><span class="ch-icon">🔊</span><span class="ch-name">Chill Zone</span><span style="font-size:10px;color:var(--text2)" id="vcCount2">0/32</span></div>
-        <div class="vc-users" id="vcUsers2"></div>
-      </button>
+      <div class="ch-sec-lbl"><span>▾ Текстовые</span><button class="ch-add" onclick="addChannel('text')" title="Добавить текстовый канал">+</button></div>
+      <div id="textChannelList" style="display:contents">
+        <button class="ch-item act" id="chGeneral" onclick="openSrvCh(this,'general','Основной чат')"><span class="ch-icon">#</span><span class="ch-name">general</span></button>
+        <button class="ch-item" onclick="openSrvCh(this,'gaming','Игры и стримы')"><span class="ch-icon">#</span><span class="ch-name">gaming</span></button>
+        <button class="ch-item" onclick="openSrvCh(this,'dev','Разработка')"><span class="ch-icon">#</span><span class="ch-name">dev</span></button>
+      </div>
+      <div class="ch-sec-lbl"><span>▾ Голосовые</span><button class="ch-add" onclick="addChannel('voice')" title="Добавить голосовой канал">+</button></div>
+      <div id="voiceChannelList">
+        <button class="ch-item vc-item" data-room="Gaming Lounge" onclick="joinVoice('Gaming Lounge')">
+          <div class="vc-row"><span class="ch-icon">🔊</span><span class="ch-name">Gaming Lounge</span><span class="vc-count" style="font-size:10px;color:var(--text2);margin-left:auto"> </span></div>
+          <div class="vc-users"></div>
+        </button>
+        <button class="ch-item vc-item" data-room="Chill Zone" onclick="joinVoice('Chill Zone')">
+          <div class="vc-row"><span class="ch-icon">🔊</span><span class="ch-name">Chill Zone</span><span class="vc-count" style="font-size:10px;color:var(--text2);margin-left:auto"> </span></div>
+          <div class="vc-users"></div>
+        </button>
+      </div>
     </div>
     <div class="user-panel">
       <div class="my-av" id="myAvSrv" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700"></div>
@@ -677,7 +681,7 @@ const rtcScreenVideos=new Map();
 let screenRelayTimer=null;
 const SCREEN_FPS=60;
 const SCREEN_QUALITY=0.8;
-const SCREEN_MAX_W=1920;
+const SCREEN_MAX_W=1280; // 1920→1280 gives 2x smaller JPEG, easier to hit 60fps
 let cwMinimized=false;
 let inVoice=false,currentVoiceRoom='';
 let ppTarget=null;
@@ -854,24 +858,37 @@ function handleWS(d){
 async function startMicRelay(){
   try{
     micStream=await navigator.mediaDevices.getUserMedia({audio:{
-    sampleRate:SAMPLE_RATE,channelCount:1,
+    sampleRate:48000,
+    channelCount:1,
     echoCancellation:true,
     noiseSuppression:true,
     autoGainControl:true,
-    googEchoCancellation:true,
-    googNoiseSuppression:true,
-    googHighpassFilter:true,
-    googTypingNoiseDetection:true,
-    googAutoGainControl:true
+    latency:0.01  // request low latency
   },video:false});
   }catch(e){
     toast('Микрофон','🎙','Нет доступа к микрофону: '+e.message,'error');
     return false;
   }
-  audioCtx=new AudioContext({sampleRate:SAMPLE_RATE,latencyHint:'interactive'});
+  audioCtx=new AudioContext({sampleRate:48000,latencyHint:'interactive'});
   if(audioCtx.state==='suspended') await audioCtx.resume();
   const src=audioCtx.createMediaStreamSource(micStream);
+
+  // Highpass: убирает гул ниже 80Hz
+  const hpf=audioCtx.createBiquadFilter();
+  hpf.type='highpass'; hpf.frequency.value=80; hpf.Q.value=0.7;
+  // Lowpass: убирает резкость выше 8kHz
+  const lpf=audioCtx.createBiquadFilter();
+  lpf.type='lowpass'; lpf.frequency.value=8000; lpf.Q.value=0.7;
+  // Компрессор: предотвращает клиппинг и рипинг
+  const comp=audioCtx.createDynamicsCompressor();
+  comp.threshold.value=-24; comp.knee.value=10; comp.ratio.value=4;
+  comp.attack.value=0.003; comp.release.value=0.15;
+  // Gain после компрессора
+  const mkGain=audioCtx.createGain(); mkGain.gain.value=1.2;
+  // Chain: src -> hpf -> lpf -> comp -> mkGain -> processor
+  src.connect(hpf); hpf.connect(lpf); lpf.connect(comp); comp.connect(mkGain);
   micProcessor=audioCtx.createScriptProcessor(CHUNK_SAMPLES,1,1);
+  mkGain.connect(micProcessor);
   micProcessor.onaudioprocess=e=>{
     if(!inVoice) return;
     // PTT: only transmit while key held
@@ -905,7 +922,6 @@ async function startMicRelay(){
       scheduleUI(()=>{renderVCUsers();updateVCBar();updateWidget();});
     }
   };
-  src.connect(micProcessor);
   micProcessor.connect(audioCtx.destination);
   return true;
 }
@@ -1435,17 +1451,32 @@ function startScreenRelay(){
     pending=true;
     try{
       ctx2d.drawImage(video,0,0,canvas.width,canvas.height);
+      // convertToBlob (OffscreenCanvas) is faster than toBlob — uses GPU pipeline
       const blob=canvas.convertToBlob
         ? await canvas.convertToBlob({type:'image/jpeg',quality:SCREEN_QUALITY})
         : await new Promise(res=>canvas.toBlob(res,'image/jpeg',SCREEN_QUALITY));
       if(!blob||!screenSharing||!ws||ws.readyState!==1){pending=false;return;}
       const buf=await blob.arrayBuffer();
+      // Use transferable buffer — zero copy send to WebSocket
       const combined=new Uint8Array(hdrBytes.length+buf.byteLength);
       combined.set(hdrBytes,0);
       combined.set(new Uint8Array(buf),hdrBytes.length);
       ws.send(combined.buffer);
     }catch(e){console.warn('screen relay err',e);}
     pending=false;
+  }
+
+  // Track actual FPS
+  let _fpsCount=0, _fpsLast=Date.now();
+  function trackFPS(){
+    _fpsCount++;
+    const now=Date.now();
+    if(now-_fpsLast>=1000){
+      window._screenFPS=_fpsCount;
+      _fpsCount=0; _fpsLast=now;
+      const el=document.getElementById('screenFpsIndicator');
+      if(el) el.textContent=window._screenFPS+'fps';
+    }
   }
 
   function startWorkerTimer(){
@@ -1464,7 +1495,7 @@ function startScreenRelay(){
     `;
     const blob=new Blob([workerCode],{type:'text/javascript'});
     worker=new Worker(URL.createObjectURL(blob));
-    worker.onmessage=()=>sendFrame();
+    worker.onmessage=()=>{sendFrame();trackFPS();};
     worker.postMessage('start');
 
     // 2) Play silent audio — Chrome won't throttle tabs that have active audio
@@ -1591,7 +1622,7 @@ function updateCallWindow(){
             ? `<video id="scrvid_${s.uid}" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video>`
             : `<canvas id="scrcanvas_${s.uid}" style="width:100%;height:100%;object-fit:contain;display:block;background:#000"></canvas>`
           }
-          <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff">🖥 ${esc(s.name)}${s.isMe?' (вы)':''}</div>
+          <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);border-radius:6px;padding:3px 10px;font-size:11px;color:#fff;display:flex;gap:8px;align-items:center">🖥 ${esc(s.name)}${s.isMe?' (вы)':''} ${s.isMe?'<span id="screenFpsIndicator" style="color:#23a55a;font-size:10px"></span>':''}</div>
         </div>`).join('');
       const strip=`<div id="cwStrip" style="display:flex;gap:8px;flex-shrink:0;justify-content:center;flex-wrap:wrap;padding-bottom:4px"></div>`;
       body.innerHTML=screenTiles+strip;
@@ -1652,13 +1683,16 @@ window.leaveVoice=function(){
 function renderVCUsers(){
   updateCallPanel();
   if(inVoice)updateCallWindow();
-  ['Gaming Lounge','Chill Zone'].forEach((room,i)=>{
-    const el=document.getElementById('vcUsers'+(i+1));
-    const cnt=document.getElementById('vcCount'+(i+1));
-    if(!el)return;
+  // Dynamic: works for any voice channel rendered with data-room attribute
+  document.querySelectorAll('.vc-item[data-room]').forEach(btn=>{
+    const room=btn.dataset.room;
+    const usersEl=btn.querySelector('.vc-users');
+    const cntEl=btn.querySelector('.vc-count');
     const users=vcRooms[room]||{};
-    if(cnt)cnt.textContent=Object.keys(users).length+'/32';
-    el.innerHTML=Object.entries(users).map(([uid,u])=>{
+    const count=Object.keys(users).length;
+    if(cntEl) cntEl.textContent=count>0?count+'':' ';
+    if(!usersEl) return;
+    usersEl.innerHTML=Object.entries(users).map(([uid,u])=>{
       const isMutedMic=uid===myUid&&micMuted;
       const isMutedDeaf=uid===myUid&&deafMuted;
       const icons=(isMutedMic?'🔇':'')+(isMutedDeaf?'🔕':'');
@@ -1810,16 +1844,53 @@ window.ppFriend=()=>{if(!ppTarget)return;if(friends.has(ppTarget)){removeFriend(
 // ══════════════════════════════════════
 // CREATE SERVER
 // ══════════════════════════════════════
+window.addChannel=function(type){
+  const name=prompt(type==='voice'?'Название голосового канала:':'Название текстового канала:','')?.trim();
+  if(!name) return;
+  if(type==='voice'){
+    const list=document.getElementById('voiceChannelList');
+    if(!list) return;
+    const btn=document.createElement('button');
+    btn.className='ch-item vc-item';
+    btn.dataset.room=name;
+    btn.onclick=()=>joinVoice(name);
+    btn.innerHTML=`<div class="vc-row"><span class="ch-icon">🔊</span><span class="ch-name">${esc(name)}</span><span class="vc-count" style="font-size:10px;color:var(--text2);margin-left:auto"> </span></div><div class="vc-users"></div>`;
+    list.appendChild(btn);
+    toast('Канал','🔊','Канал #'+name+' создан','success');
+  } else {
+    // Text channel
+    const list=document.getElementById('textChannelList');
+    if(!list) return;
+    const id='ch_'+name.toLowerCase().replace(/\s+/g,'_');
+    // Register in server messages
+    if(!srvMsgs[id]) srvMsgs[id]=[];
+    const btn=document.createElement('button');
+    btn.className='ch-item';
+    btn.onclick=function(){openSrvCh(this,id,name);};
+    btn.innerHTML=`<span class="ch-icon">#</span><span class="ch-name">${esc(name)}</span>`;
+    list.appendChild(btn);
+    toast('Канал','#','Канал #'+name+' создан','success');
+  }
+};
+
 window.createSrv=function(){
   const name=document.getElementById('srvNameInp').value.trim()||'Мой сервер';
   closeModal('createSrvModal');
   const rail=document.getElementById('rail');
-  const btn=document.createElement('button');btn.className='ri';btn.textContent=name[0].toUpperCase();btn.title=name;btn.style.fontSize='14px';btn.style.fontWeight='700';
-  btn.onclick=()=>switchMode('server','?',name);
-  rail.insertBefore(btn,rail.querySelector('.rail-add'));
-  toast('Готово','🎉','"'+name+'" создан!','success');
-  setTimeout(()=>btn.click(),100);
-};
+  const btn=document.createElement('button');
+  btn.className='ri';
+  btn.textContent=name[0].toUpperCase();
+  btn.title=name;
+  btn.style.fontSize='14px';
+  btn.style.fontWeight='700';
+  const srvId='srv_'+Date.now();
+  btn.onclick=()=>switchMode('server',name[0].toUpperCase(),name,srvId);
+  // Insert before the + button
+  const addBtn=rail.querySelector('.rail-add');
+  rail.insertBefore(btn,addBtn);
+  switchMode('server',name[0].toUpperCase(),name,srvId);
+  toast('Сервер','🎮','Сервер «'+name+'» создан','success');
+};;
 
 // ══════════════════════════════════════
 // UTILS
