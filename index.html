@@ -14,6 +14,26 @@
   --green:#23a55a;--red:#ed4245;--amber:#faa61a;
   --font:'JetBrains Mono',monospace;
 }
+/* ── Light theme ── */
+body.light{
+  --bg0:#f2f3f5;--bg1:#ffffff;--bg2:#e3e5e8;--bg3:#ebedef;--bg4:#d4d7dc;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.15);
+  --text0:#060607;--text1:#4e5058;--text2:#80848e;
+}
+body.light .cw{background:#f2f3f5;}
+body.light .cw-top,.light .cw-bar{background:#e3e5e8;}
+body.light .cw-participant{background:#ebedef;}
+body.light .rail{background:#e3e5e8;}
+body.light .sidebar{background:#ebedef;}
+body.light .app{background:#f2f3f5;}
+body.light .user-panel{background:#e3e5e8;}
+body.light .msg-g:hover{background:rgba(0,0,0,0.04);}
+body.light .settings-modal{background:#ffffff;}
+body.light .s-sidebar{background:#f2f3f5;}
+body.light input,body.light select,body.light textarea{background:#ebedef;color:var(--text0);}
+body.light .setup-card{background:#ffffff;border-color:rgba(0,0,0,.15);}
+body.light .setup-input{background:#f2f3f5;border-color:rgba(0,0,0,.2);color:#060607;}
+body.light .call-incoming{background:#ffffff;border-color:rgba(0,0,0,.15);}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--text0);font-family:var(--font);font-size:13px}
 .dash-card{background:var(--bg3);border-radius:10px;padding:14px 16px;text-align:center;border:1px solid rgba(255,255,255,.06)}
@@ -139,8 +159,32 @@ input,textarea{font-family:var(--font)}
 .ma-btn{width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:var(--text1);font-size:13px;transition:all .1s}
 .ma-btn:hover{background:var(--bg4);color:var(--text0)}
 .react-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-.react-chip{display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:2px 8px;font-size:12px;cursor:pointer;user-select:none}
+.react-chip{display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:2px 8px;font-size:12px;cursor:pointer;user-select:none;transition:background .1s}
+.react-chip:hover{background:var(--bg4)}
 .react-chip.mine{border-color:var(--accent);background:rgba(88,101,242,.15)}
+/* Emoji picker popup */
+.emoji-picker{position:absolute;right:0;top:-52px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 8px;display:flex;gap:4px;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.emoji-picker button{background:none;border:none;font-size:18px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:background .1s;line-height:1}
+.emoji-picker button:hover{background:var(--bg4)}
+/* Reply quote */
+.reply-quote{background:var(--bg3);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;padding:4px 10px;margin-bottom:4px;font-size:12px;color:var(--text1);cursor:pointer;display:flex;align-items:center;gap:6px}
+.reply-quote:hover{background:var(--bg4)}
+.reply-quote-name{font-weight:700;color:var(--text0)}
+.reply-quote-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+/* Reply compose bar */
+.reply-bar{background:var(--bg3);border-radius:6px 6px 0 0;padding:6px 12px;font-size:12px;color:var(--text1);display:none;align-items:center;gap:8px;border-bottom:2px solid var(--accent)}
+.reply-bar.vis{display:flex}
+.reply-bar-name{font-weight:700;color:var(--accent)}
+.reply-bar-close{background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;margin-left:auto;padding:0 2px}
+.reply-bar-close:hover{color:var(--text0)}
+/* Activity status */
+.activity-badge{font-size:10px;color:var(--text2);display:flex;align-items:center;gap:4px;margin-top:1px}
+.activity-dot{width:5px;height:5px;border-radius:50%;background:var(--green);flex-shrink:0}
+/* Theme toggle in settings */
+.theme-opt{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;border:2px solid var(--border2);cursor:pointer;transition:all .15s;flex:1}
+.theme-opt.act{border-color:var(--accent);background:rgba(88,101,242,.1)}
+.theme-opt-icon{font-size:24px}
+.theme-opt-label{font-size:13px;font-weight:600}
 .typing-wrap{height:22px;padding:0 16px;flex-shrink:0;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
 .t-dots{display:flex;gap:3px}
 .td{width:4px;height:4px;border-radius:50%;background:var(--text2);animation:td 1.2s ease-in-out infinite}
@@ -891,21 +935,6 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
 </div>
 
 <!-- MINI VOICE WIDGET -->
-<div id="voiceWidget" style="display:none;position:fixed;bottom:80px;right:20px;width:220px;background:#111217;border:1px solid rgba(255,255,255,.1);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:500;font-family:'JetBrains Mono',monospace;overflow:hidden">
-  <div style="background:#1a1d27;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:move" id="widgetDragHandle">
-    <div style="font-size:11px;font-weight:700;color:#dcddde" id="widgetRoomName">🔊 —</div>
-    <div style="display:flex;gap:4px">
-      <div style="font-size:10px;color:#23a55a" id="widgetPing">—</div>
-      <button onclick="document.getElementById('voiceWidget').style.display='none'" style="background:none;border:none;color:#72767d;font-size:14px;cursor:pointer;padding:0 2px">×</button>
-    </div>
-  </div>
-  <div style="padding:8px 10px" id="widgetUsers"></div>
-  <div style="padding:6px 10px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:6px">
-    <button onclick="toggleMic()" id="widgetMicBtn" title="Мут (M)" style="flex:1;padding:6px;border-radius:6px;border:none;background:#2b2d31;color:#dcddde;font-size:13px;cursor:pointer">🎙</button>
-    <button id="pttIndicator" onmousedown="pttMouseDown()" onmouseup="pttMouseUp()" title="PTT" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:#2b2d31;color:#dcddde;font-size:11px;cursor:pointer;transition:all .1s">PTT</button>
-    <button onclick="leaveVoice()" title="Выйти" style="flex:1;padding:6px;border-radius:6px;border:none;background:rgba(237,66,69,.2);color:#ed4245;font-size:13px;cursor:pointer">📵</button>
-  </div>
-</div>
 <div id="pttOverlay" style="display:none;position:fixed;bottom:140px;right:20px;background:rgba(35,165,90,.9);color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;z-index:501;pointer-events:none">🎙 PTT активен</div>
 <div id="toastBox"></div>
 
@@ -1086,7 +1115,7 @@ function handleWS(d){
     case 'incoming_call':
       showIncomingCall(d.from, d.name, d.color, d.init);
       break;
-    case 'call_declined': toast('Звонок','📵',getUser(d.from).name+' отклонил','error');break;
+    case 'call_declined': stopRingTone(); toast('Звонок','📵',getUser(d.from).name+' отклонил','error');break;
     case 'chat':
       if(!srvMsgs[d.channel])srvMsgs[d.channel]=[];
       srvMsgs[d.channel].push(d.msg);
@@ -1099,6 +1128,7 @@ function handleWS(d){
       (d.peers||[]).forEach(p=>{ if(p.screenSharing) rtcRequestScreen(p.uid); });
       break;
     case 'peer_joined':
+      stopRingTone(); // Stop outgoing ring when someone joins
       toast('Голосовой','👤',d.name+' зашёл в канал','info');break;
     case 'peer_left':
       toast('Голосовой','👋',(getUser(d.uid).name||d.uid)+' вышел','info');
@@ -1185,29 +1215,72 @@ async function startMicRelay(){
   URL.revokeObjectURL(blobUrl);
 
   const src=audioCtx.createMediaStreamSource(micStream);
-  // Mic gain node — controlled by settings slider
   const micGainNode=audioCtx.createGain();
   micGainNode.gain.value=micGainValue;
   window._micGainNode=micGainNode;
   src.connect(micGainNode);
   micProcessor=new AudioWorkletNode(audioCtx,'mic-sender');
   micGainNode.connect(micProcessor);
-  // Worklet не нужно подключать к destination, просто порт
+
+  // ── Aggressive Noise Gate state ──
+  let _ngSmooth=0;       // smoothed RMS level
+  let _ngHold=0;         // hold counter (frames)
+  let _ngSilFrames=0;    // consecutive silent frames
+  const NG_ATTACK=0.15;  // how fast gate opens
+  const NG_RELEASE=0.05; // how fast gate closes
+  const NG_HOLD=8;       // frames to hold open after speech stops (~160ms)
+
   micProcessor.port.onmessage=e=>{
     if(!inVoice) return;
     if(pttMode&&!pttHeld) return;
     if(micMuted) return;
     const f32=e.data;
-    // VAD with configurable threshold
-    const vadThresh=(parseFloat(localStorage.getItem('vl_thresh')||'2'))/1000;
     const vadOn=localStorage.getItem('vl_vad')!=='0';
-    let vol=0; for(let i=0;i<f32.length;i++) vol+=Math.abs(f32[i]); vol/=f32.length;
-    const spk=!vadOn||vol>vadThresh;
-    // Convert to Int16 and send
-    const i16=new Int16Array(f32.length);
-    for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32767));
+    const noiseOn=localStorage.getItem('vl_noise')!=='0';
+
+    // ── Noise Gate: RMS with smoothing + hold ──
+    let rms=0;
+    for(let i=0;i<f32.length;i++) rms+=f32[i]*f32[i];
+    rms=Math.sqrt(rms/f32.length);
+
+    // Dynamic threshold — adapts to background noise level
+    // Base: -42dB ≈ 0.008, aggressive: -52dB ≈ 0.0025
+    const thresh=noiseOn ? 0.012 : 0.003;
+
+    // Smooth the RMS to avoid choppy gating
+    _ngSmooth=_ngSmooth*(1-NG_ATTACK)+rms*NG_ATTACK;
+
+    let gateOpen=false;
+    if(!vadOn){
+      gateOpen=true; // VAD off = always send
+    } else if(_ngSmooth > thresh){
+      gateOpen=true;
+      _ngHold=NG_HOLD;
+      _ngSilFrames=0;
+    } else if(_ngHold>0){
+      _ngHold--;
+      gateOpen=true; // hold open briefly
+    } else {
+      _ngSilFrames++;
+      gateOpen=false;
+    }
+
+    // Apply noise gate — zero out audio when gate closed (no breath noise)
+    const out=new Float32Array(f32.length);
+    if(gateOpen){
+      // Fade in/out to avoid clicks
+      const fade=_ngHold>0?(_ngHold/NG_HOLD):1;
+      for(let i=0;i<f32.length;i++) out[i]=f32[i]*(gateOpen?1:fade);
+    }
+    // else out stays zero — complete silence when gate closed
+
+    // Convert gated audio to Int16 and send
+    const i16=new Int16Array(out.length);
+    for(let i=0;i<out.length;i++) i16[i]=Math.max(-32768,Math.min(32767,out[i]*32767));
     wsSendBinary(i16.buffer);
+
     // Speaking indicator
+    const spk=gateOpen&&rms>thresh*0.5;
     const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking);
     if(spk!==prevSpk){
       wsSend({type:'speaking',speaking:spk});
@@ -1638,6 +1711,7 @@ window.sendDM=function(uid){
   const text=val.startsWith('!')?`<code>${esc(val)}</code>`:esc(val);
   const cmd=val.startsWith('!')?processCmd(val):null;
   const msg={from:myUid,fromName:ME.name,fromColor:ME.color,fromInit:ME.init,text,cmd,time:tNow(),ts:Date.now()};
+  if(_replyData){msg.replyTo=_replyData;cancelReply();}
   if(!dmConvs[uid])dmConvs[uid]=[];
   dmConvs[uid].push(msg);appendMsg(msg,uid);
   wsSend({type:'dm',to:uid,text,time:msg.time});
@@ -1725,34 +1799,122 @@ function renderMsg(m){
   const name=m.fromName||(isMe?ME.name:getUser(m.from).name);
   const role=m.fromRole||getUser(m.from).role||'';
   const nameColor=roleColor(role)||color;
-  return `<div class="msg-g">
+  const msgId='msg_'+m.ts+'_'+(m.from||'').slice(-4);
+  // Reply quote if replying to someone
+  const replyHtml=m.replyTo?`<div class="reply-quote" onclick="scrollToMsg('${m.replyTo.ts}')">
+    <span style="font-size:14px">↩</span>
+    <span class="reply-quote-name">${esc(m.replyTo.name)}</span>
+    <span class="reply-quote-text">${esc(stripHtml(m.replyTo.text||'').slice(0,60))}</span>
+  </div>`:'';
+  return `<div class="msg-g" id="${msgId}" data-ts="${m.ts}" data-from="${m.from||''}">
     <div class="msg-av" style="background:${color};cursor:pointer" onclick="openPP('${m.from}',this)">${init}</div>
-    <div class="msg-body">
+    <div class="msg-body" style="flex:1;min-width:0">
       <div class="msg-meta">
         <span class="msg-author" style="color:${nameColor};cursor:pointer" onclick="openPP('${m.from}',this)">${esc(name)}</span>
         ${roleBadge(role)}
         <span class="msg-time">${m.time||''}</span>
       </div>
+      ${replyHtml}
       <div class="msg-txt">${formatMsgText(m.text||'')}</div>
       ${m.cmd?`<div class="cmd-res">${esc(m.cmd)}</div>`:''}
+      <div class="react-row" id="rr_${msgId}"></div>
     </div>
     <div class="msg-acts">
-      <button class="ma-btn" onclick="quickReact(this)" title="Реакция">😊</button>
-      <button class="ma-btn" title="Ответить">↩</button>
-      ${isMe?`<button class="ma-btn" style="color:var(--red)" onclick="this.closest('.msg-g').remove()" title="Удалить">🗑</button>`:''}
+      <button class="ma-btn" onclick="toggleEmojiPicker(this,'${msgId}')" title="Реакция">😊</button>
+      <button class="ma-btn" onclick="startReply('${msgId}')" title="Ответить">↩</button>
+      ${isMe?`<button class="ma-btn" style="color:var(--red)" onclick="deleteMsg('${msgId}')" title="Удалить">🗑</button>`:''}
     </div>
   </div>`;
 }
 
-window.quickReact=function(btn){
-  const emojis=['👍','❤️','😂','🔥','👀','✅'];
-  const e=emojis[Math.floor(Math.random()*emojis.length)];
-  const body=btn.closest('.msg-g').querySelector('.msg-body');
-  let rr=body.querySelector('.react-row');
-  if(!rr){rr=document.createElement('div');rr.className='react-row';body.appendChild(rr);}
-  const chip=document.createElement('span');chip.className='react-chip mine';chip.textContent=e+' 1';
-  chip.onclick=()=>{const n=parseInt(chip.textContent.split(' ')[1])+1;chip.textContent=e+' '+n;};
-  rr.appendChild(chip);
+// ── Emoji reactions ──
+const REACTION_EMOJIS=['👍','❤️','😂','🔥','👀','✅','😮','😢','🎉','💯','😎','🤝'];
+let _emojiPickerEl=null;
+window.toggleEmojiPicker=function(btn,msgId){
+  // Close existing picker
+  if(_emojiPickerEl){_emojiPickerEl.remove();_emojiPickerEl=null;return;}
+  const picker=document.createElement('div');
+  picker.className='emoji-picker';
+  picker.style.cssText='position:absolute;right:8px;top:-48px;z-index:200;';
+  picker.innerHTML=REACTION_EMOJIS.map(e=>
+    `<button onclick="addReaction('${msgId}','${e}',this.closest('.emoji-picker'))">${e}</button>`
+  ).join('');
+  const acts=btn.closest('.msg-acts');
+  acts.style.position='relative';
+  acts.appendChild(picker);
+  _emojiPickerEl=picker;
+  // Close on outside click
+  setTimeout(()=>{
+    document.addEventListener('click',function handler(e){
+      if(!picker.contains(e.target)){picker.remove();_emojiPickerEl=null;document.removeEventListener('click',handler);}
+    });
+  },10);
+};
+
+window.addReaction=function(msgId,emoji,picker){
+  if(picker){picker.remove();_emojiPickerEl=null;}
+  const row=document.getElementById('rr_'+msgId);
+  if(!row) return;
+  // Check if already reacted with this emoji
+  const existing=[...row.querySelectorAll('.react-chip')].find(c=>c.dataset.emoji===emoji);
+  if(existing){
+    const cnt=parseInt(existing.dataset.count||'1')+1;
+    existing.dataset.count=cnt;
+    existing.querySelector('.react-count').textContent=cnt;
+    return;
+  }
+  const chip=document.createElement('span');
+  chip.className='react-chip mine';
+  chip.dataset.emoji=emoji;
+  chip.dataset.count='1';
+  chip.innerHTML=`${emoji} <span class="react-count">1</span>`;
+  chip.onclick=()=>{
+    const c=parseInt(chip.dataset.count||'1')+1;
+    chip.dataset.count=c;
+    chip.querySelector('.react-count').textContent=c;
+  };
+  row.appendChild(chip);
+};
+
+// ── Reply to message ──
+let _replyData=null;
+window.startReply=function(msgId){
+  const msgEl=document.getElementById(msgId);
+  if(!msgEl) return;
+  const name=msgEl.querySelector('.msg-author')?.textContent||'?';
+  const text=msgEl.querySelector('.msg-txt')?.textContent||'';
+  const ts=msgEl.dataset.ts;
+  _replyData={ts,name,text:text.slice(0,80)};
+  // Show reply bar above input
+  let bar=document.getElementById('replyBar');
+  if(!bar){
+    // Find input area and prepend reply bar
+    const inp=document.querySelector('.inp-row, .dm-inp-row, #dmInput');
+    if(inp){
+      bar=document.createElement('div');
+      bar.id='replyBar';
+      bar.className='reply-bar vis';
+      inp.parentElement.insertBefore(bar,inp);
+    }
+  } else {bar.className='reply-bar vis';}
+  if(bar) bar.innerHTML=`<span style="font-size:14px;color:var(--accent)">↩</span> Ответ <span class="reply-bar-name">${esc(name)}</span><span style="color:var(--text2);margin-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc(text.slice(0,50))}</span><button class="reply-bar-close" onclick="cancelReply()">✕</button>`;
+  // Focus input
+  document.querySelector('#dmInput, #srvInput, [id$="Input"]')?.focus();
+};
+
+window.cancelReply=function(){
+  _replyData=null;
+  const bar=document.getElementById('replyBar');
+  if(bar){bar.className='reply-bar';setTimeout(()=>bar.remove(),200);}
+};
+
+window.scrollToMsg=function(ts){
+  const el=document.querySelector(`[data-ts="${ts}"]`);
+  if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.background='rgba(88,101,242,.15)';setTimeout(()=>el.style.background='',1500);}
+};
+
+window.deleteMsg=function(msgId){
+  document.getElementById(msgId)?.remove();
 };
 
 function processCmd(cmd){
@@ -1905,35 +2067,14 @@ window.joinVoice=function(room, peerId){
   const peerName2=peerId?getUser(peerId).name:'';
   openCallWindow(isDM2?('📞 '+peerName2):('🔊 '+room), isDM2?'Голосовой звонок':'Голосовой канал');
   // Show mini widget
-  const wgt=document.getElementById('voiceWidget');
-  if(wgt){
-    wgt.style.display='block';
-    document.getElementById('widgetRoomName').textContent=(isDM2?'📞 ':'🔊 ')+(isDM2?peerName2:room);
-  }
-  updateWidget();
+  // voiceWidget removed — call panel handles this
+  updateCallWindow();
 }
 
 function updateWidget(){
-  const el=document.getElementById('widgetUsers');
-  if(!el||!inVoice) return;
-  const users=vcRooms[currentVoiceRoom]||{};
-  const all=[{uid:myUid,name:ME.name,color:ME.color,init:ME.init,speaking:false,isMe:true,role:myRole},
-    ...Object.entries(users).map(([uid,u])=>({uid,...u,isMe:false}))];
-  el.innerHTML=all.map(u=>{
-    const isMic=u.isMe&&micMuted;
-    const spkColor=u.speaking&&!isMic?'#23a55a':'#72767d';
-    const rc=roleColor(u.role||'');
-    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">
-      <div style="width:6px;height:6px;border-radius:50%;background:${spkColor};flex-shrink:0${u.speaking&&!isMic?';box-shadow:0 0 6px #23a55a':''}"></div>
-      <span style="font-size:11px;color:${rc||'#dcddde'};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name)}${u.isMe?' (я)':''}${isMic?' 🔇':''}</span>
-      ${u.ping?`<span style="font-size:9px;color:#72767d">${u.ping}ms</span>`:''}
-    </div>`;
-  }).join('');
-  const micBtn=document.getElementById('widgetMicBtn');
-  if(micBtn) micBtn.textContent=micMuted?'🔇':'🎙';
-  const pttBtn=document.getElementById('pttIndicator');
-  if(pttBtn){pttBtn.style.display=pttMode?'':'none';if(!pttMode)pttBtn.style.display='none';}
-};
+  // Widget removed — updateCallWindow handles display
+  if(inVoice) updateCallWindow();
+}
 
 function updateCallPanel(){
   const el=document.getElementById('cpParticipants');
@@ -2328,8 +2469,8 @@ function updateCallWindow(){
     body.dataset.screenIds='';
     // Calculate optimal grid: 1→1col, 2→2col, 3-4→2col, 5-6→3col, 7+→3col
     const cols=count<=1?1:count<=4?2:3;
-    const avSize=count<=1?120:count<=4?80:64;
-    const fontSize=count<=1?36:count<=4?28:22;
+    const avSize=count<=1?72:count<=2?64:count<=4?52:40;
+    const fontSize=count<=1?26:count<=2?22:count<=4?18:14;
     body.style.cssText=`display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px;padding:12px;align-content:center;justify-content:center;`;
     body.innerHTML=allUsers.map(u=>{
       const isMic=u.isMe&&micMuted;const spk=u.speaking&&!isMic;
@@ -2358,6 +2499,7 @@ window.leaveVoice=async function(){
   if(!inVoice)return;
   inVoice=false;
   wsSend({type:'leave_voice'});
+  stopRingTone();
   await stopMicRelay();
   peerAudio.forEach((_,uid)=>cleanupPeerAudio(uid));
   peerAudio.clear();
@@ -2373,7 +2515,6 @@ window.leaveVoice=async function(){
       if(main){main.style.display='';main.style.flexDirection='';}
     }
   }
-  const wgt=document.getElementById('voiceWidget');if(wgt)wgt.style.display='none';
   stopScreenShare();
   toast('Голосовой','👋','Вы вышли','info');
 };
@@ -2424,11 +2565,48 @@ function updateVCBar(){
 // ══════════════════════════════════════
 window.startCall=async function(uid){
   wsSend({type:'call',to:uid});
-  // Start private DM call - use uid as room name
   const room = 'dm:'+[myUid,uid].sort().join('_');
+  playRingTone(true); // outgoing ring
+  window._outgoingCallTo=uid;
   await joinVoice(room, uid);
   toast('Звонок','📞','Звоним '+getUser(uid).name+'...','info');
 };
+
+// ── Ring tone synthesizer ──
+let _ringInterval=null;
+function playRingTone(outgoing=false){
+  stopRingTone();
+  let beat=0;
+  function playBeep(){
+    try{
+      const ctx=new AudioContext();
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.connect(gain);gain.connect(ctx.destination);
+      if(outgoing){
+        // Outgoing: two-tone beep (like Discord)
+        osc.frequency.setValueAtTime(480,ctx.currentTime);
+        osc.frequency.setValueAtTime(440,ctx.currentTime+0.1);
+      } else {
+        // Incoming: three rising tones
+        osc.frequency.setValueAtTime(880,ctx.currentTime);
+        osc.frequency.setValueAtTime(1100,ctx.currentTime+0.08);
+        osc.frequency.setValueAtTime(1320,ctx.currentTime+0.16);
+      }
+      gain.gain.setValueAtTime(0,ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.25,ctx.currentTime+0.02);
+      gain.gain.setValueAtTime(0.25,ctx.currentTime+(outgoing?0.15:0.2));
+      gain.gain.linearRampToValueAtTime(0,ctx.currentTime+(outgoing?0.25:0.35));
+      osc.start();osc.stop(ctx.currentTime+0.5);
+      osc.onended=()=>ctx.close();
+    }catch(e){}
+  }
+  playBeep();
+  _ringInterval=setInterval(playBeep, outgoing?3000:2000);
+}
+function stopRingTone(){
+  if(_ringInterval){clearInterval(_ringInterval);_ringInterval=null;}
+}
 
 function showIncomingCall(fromUid, name, color, init){
   const el = document.getElementById('callIncoming');
@@ -2439,18 +2617,21 @@ function showIncomingCall(fromUid, name, color, init){
   window._callFrom = fromUid;
   window._callRoom = 'dm:'+[myUid,fromUid].sort().join('_');
   el.style.display = 'block';
+  playRingTone(false);  // incoming ring
   if(window._callTimeout) clearTimeout(window._callTimeout);
-  window._callTimeout = setTimeout(()=>{ el.style.display='none'; }, 30000);
+  window._callTimeout = setTimeout(()=>{ el.style.display='none'; stopRingTone(); }, 30000);
 }
 
 window.answerCall=async function(){
   document.getElementById('callIncoming').style.display='none';
+  stopRingTone();
   if(!window._callFrom) return;
   wsSend({type:'call_answer',to:window._callFrom});
   await joinVoice(window._callRoom, window._callFrom);
 };
 window.declineCall=function(){
   document.getElementById('callIncoming').style.display='none';
+  stopRingTone();
   if(window._callFrom) wsSend({type:'call_decline',to:window._callFrom});
 };
 
@@ -3074,6 +3255,18 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
         <div class="s-title">Внешний вид</div>
         <div class="s-subtitle">Тема, цвета и отображение интерфейса</div>
         <div class="s-section">
+          <div class="s-section-title">Тема</div>
+          <div style="display:flex;gap:10px;margin-top:8px">
+            <div class="theme-opt act" data-theme="dark" onclick="setTheme('dark',this)" style="flex:1">
+              <span class="theme-opt-icon">🌙</span>
+              <div><div class="theme-opt-label">Тёмная</div><div style="font-size:11px;color:var(--text2)">По умолчанию</div></div>
+            </div>
+            <div class="theme-opt" data-theme="light" onclick="setTheme('light',this)" style="flex:1">
+              <span class="theme-opt-icon">☀️</span>
+              <div><div class="theme-opt-label">Светлая</div><div style="font-size:11px;color:var(--text2)">Discord Light</div></div>
+            </div>
+          </div>
+        </div>
           <div class="s-section-title">Акцент-цвет</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px" id="accentPicker">
             <div class="s-accent-opt act" data-color="#5865f2" style="background:#5865f2" onclick="setAccentColor('#5865f2',this)" title="Discord Blue"></div>
@@ -3121,6 +3314,19 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
             <button class="s-status-opt" data-s="idle" onclick="setMyStatus('idle',this)"><span style="background:#faa61a" class="s-status-dot"></span>Отошёл</button>
             <button class="s-status-opt" data-s="dnd" onclick="setMyStatus('dnd',this)"><span style="background:#ed4245" class="s-status-dot"></span>Не беспокоить</button>
             <button class="s-status-opt" data-s="invisible" onclick="setMyStatus('invisible',this)"><span style="background:#747f8d" class="s-status-dot"></span>Невидимый</button>
+          </div>
+          <div class="s-section-title" style="margin-top:8px">Активность</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;margin-bottom:12px">
+            <button onclick="setActivity('🎮','Играет в CS2')" style="padding:5px 10px;background:var(--bg3);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;color:var(--text0);font-family:var(--font)">🎮 CS2</button>
+            <button onclick="setActivity('🎮','Играет в Minecraft')" style="padding:5px 10px;background:var(--bg3);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;color:var(--text0);font-family:var(--font)">🎮 Minecraft</button>
+            <button onclick="setActivity('📺','Смотрит YouTube')" style="padding:5px 10px;background:var(--bg3);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;color:var(--text0);font-family:var(--font)">📺 YouTube</button>
+            <button onclick="setActivity('🎵','Слушает музыку')" style="padding:5px 10px;background:var(--bg3);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;color:var(--text0);font-family:var(--font)">🎵 Музыка</button>
+            <button onclick="setActivity('💻','Программирует')" style="padding:5px 10px;background:var(--bg3);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;color:var(--text0);font-family:var(--font)">💻 Код</button>
+            <button onclick="setActivity('','');cancelActivity()" style="padding:5px 10px;background:rgba(237,66,69,.15);border:1px solid rgba(237,66,69,.3);border-radius:6px;font-size:12px;cursor:pointer;color:#ed4245;font-family:var(--font)">✕ Убрать</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+            <input type="text" id="sActivityCustom" maxlength="48" placeholder="Своя активность..." style="flex:1;background:var(--bg1);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 12px;color:#dcddde;font-size:13px;outline:none;font-family:var(--font)">
+            <button onclick="setActivity('🎮',document.getElementById('sActivityCustom').value.trim())" style="padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font)">Задать</button>
           </div>
           <div class="s-section-title" style="margin-top:8px">Текст статуса</div>
           <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
@@ -3336,6 +3542,10 @@ function loadAllSettings(){
   const compact=localStorage.getItem('vl_compact')==='1';
   document.getElementById('sCompact').checked=compact;
   if(compact) document.body.classList.add('compact');
+  // Theme
+  const theme=localStorage.getItem('vl_theme')||'dark';
+  document.body.classList.toggle('light',theme==='light');
+  document.querySelectorAll('.theme-opt').forEach(el=>el.classList.toggle('act',el.dataset.theme===theme));
 
   // Notifications
   const nload=(k,id)=>{const v=localStorage.getItem(k);if(v!==null&&document.getElementById(id))document.getElementById(id).checked=v==='1';};
@@ -3614,7 +3824,11 @@ window.applyAnimations=function(on){
   document.body.classList.toggle('no-animations',!on);
   localStorage.setItem('vl_animations',on?'1':'0');
 };
-window.setTheme=function(){toast('Тема','🎨','Только тёмная тема','info');};
+window.setTheme=function(theme,btn){
+  document.body.classList.toggle('light', theme==='light');
+  localStorage.setItem('vl_theme', theme);
+  document.querySelectorAll('.theme-opt').forEach(el=>el.classList.toggle('act', el.dataset.theme===theme));
+};
 
 // ── Notifications ──
 window.saveNotifSettings=function(){
@@ -3655,6 +3869,21 @@ window.updateStatusPreview=function(){
   if(!prev)return;
   if(txt){prev.style.display='block';prev.textContent=emoji+' '+txt;}
   else prev.style.display='none';
+};
+
+// ── Activity status (like Discord Rich Presence) ──
+window.setActivity=function(emoji,text){
+  if(!text){cancelActivity();return;}
+  const activity=emoji+' '+text;
+  localStorage.setItem('vl_activity',activity);
+  if(window.wsSend) wsSend({type:'status',status:localStorage.getItem('vl_my_status')||'online',activity});
+  toast('Активность',emoji,text,'success');
+  closeSettings();
+};
+window.cancelActivity=function(){
+  localStorage.removeItem('vl_activity');
+  if(window.wsSend) wsSend({type:'status',status:localStorage.getItem('vl_my_status')||'online',activity:''});
+  toast('Активность','✕','Убрано','info');
 };
 window.toggleEmojiPicker=function(){
   const p=document.getElementById('sEmojiPicker');
@@ -3923,16 +4152,7 @@ window.exportHistory=function(channel){
   toast('История','💾','Экспортировано','success');
 };
 
-// ── Widget drag ──
-(function(){
-  const handle=document.getElementById('widgetDragHandle');
-  const wgt=document.getElementById('voiceWidget');
-  if(!handle||!wgt) return;
-  let dragging=false,ox=0,oy=0;
-  handle.addEventListener('mousedown',e=>{dragging=true;ox=e.clientX-wgt.offsetLeft;oy=e.clientY-wgt.offsetTop;});
-  document.addEventListener('mousemove',e=>{if(!dragging)return;wgt.style.left=Math.max(0,e.clientX-ox)+'px';wgt.style.top=Math.max(0,e.clientY-oy)+'px';wgt.style.right='auto';wgt.style.bottom='auto';});
-  document.addEventListener('mouseup',()=>{dragging=false;});
-})();
+
 
 window.confirmLogout=function(){
   if(confirm('Выйти из аккаунта? Страница перезагрузится.')){
@@ -3952,6 +4172,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(fs)document.documentElement.style.fontSize=fs+'px';
   if(localStorage.getItem('vl_compact')==='1')document.body.classList.add('compact');
   if(localStorage.getItem('vl_animations')==='0')document.body.classList.add('no-animations');
+  if(localStorage.getItem('vl_theme')==='light')document.body.classList.add('light');
   try{const kb=JSON.parse(localStorage.getItem('vl_keybinds')||'{}');keybinds={...DEFAULT_KB,...kb};}catch(e){}
 });
 
