@@ -46,24 +46,61 @@ body.compact .msg-txt{font-size:12px}
 body.no-animations *{transition:none !important;animation:none !important}
 button{cursor:pointer;font-family:var(--font)}
 input,textarea{font-family:var(--font)}
-#setupScreen{position:fixed;inset:0;background:var(--bg0);z-index:1000;display:flex;align-items:center;justify-content:center}
-.setup-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:32px;width:400px;max-width:95vw;animation:fadein .3s ease}
+/* ══ AUTH SCREEN ══ */
+#setupScreen{position:fixed;inset:0;background:#0a0b0f;z-index:1000;display:flex;align-items:center;justify-content:center;overflow:hidden}
+/* Animated background particles */
+#setupScreen::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(88,101,242,.25),transparent),radial-gradient(ellipse 50% 80% at 80% 60%,rgba(35,165,90,.1),transparent);pointer-events:none}
+.auth-wrap{display:flex;width:min(900px,95vw);min-height:520px;border-radius:20px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.7);position:relative;z-index:1}
+/* Left panel — branding */
+.auth-left{flex:1;background:linear-gradient(135deg,#1a1d27 0%,#0f1119 100%);padding:48px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;min-width:0}
+.auth-left::after{content:'';position:absolute;top:-80px;right:-80px;width:280px;height:280px;background:radial-gradient(circle,rgba(88,101,242,.2),transparent 70%);border-radius:50%;pointer-events:none}
+.auth-brand{position:relative;z-index:1}
+.auth-logo{font-size:48px;margin-bottom:16px;display:block;animation:floatY 3s ease-in-out infinite}
+@keyframes floatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.auth-brand-name{font-size:32px;font-weight:700;color:#fff;letter-spacing:-.5px;margin-bottom:8px}
+.auth-brand-sub{font-size:13px;color:rgba(255,255,255,.5);line-height:1.8;max-width:260px}
+.auth-features{display:flex;flex-direction:column;gap:10px;position:relative;z-index:1}
+.auth-feat{display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.6)}
+.auth-feat-icon{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+/* Right panel — form */
+.auth-right{width:380px;flex-shrink:0;background:#111217;padding:40px 36px;display:flex;flex-direction:column;justify-content:center}
+.auth-tabs{display:flex;gap:0;margin-bottom:28px;background:rgba(255,255,255,.06);border-radius:8px;padding:3px}
+.auth-tab{flex:1;padding:8px;border:none;border-radius:6px;background:transparent;color:rgba(255,255,255,.5);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:var(--font)}
+.auth-tab.act{background:var(--accent);color:#fff}
+.auth-form{display:flex;flex-direction:column;gap:0}
+.auth-form.hidden{display:none}
+.auth-field{margin-bottom:14px}
+.auth-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);font-weight:700;margin-bottom:6px;display:block}
+.auth-input{width:100%;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.08);border-radius:8px;padding:11px 14px;color:#fff;font-size:13px;outline:none;transition:border-color .2s,background .2s;font-family:var(--font)}
+.auth-input:focus{border-color:var(--accent);background:rgba(88,101,242,.08)}
+.auth-input::placeholder{color:var(--text2)}
+.auth-input.err{border-color:var(--red)}
+.color-picker{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px}
+.color-opt{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s,box-shadow .15s}
+.color-opt:hover{transform:scale(1.15)}
+.color-opt.sel{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.3)}
+.auth-submit{width:100%;padding:13px;border-radius:9px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;font-family:var(--font);margin-top:4px;display:flex;align-items:center;justify-content:center;gap:8px}
+.auth-submit:hover{background:var(--accent2);transform:translateY(-1px);box-shadow:0 6px 20px rgba(88,101,242,.4)}
+.auth-submit:active{transform:translateY(0)}
+.auth-submit:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none}
+.auth-err{font-size:11px;color:var(--red);min-height:16px;margin-bottom:8px;display:flex;align-items:center;gap:4px}
+.auth-switch{font-size:12px;color:var(--text2);text-align:center;margin-top:14px}
+.auth-switch span{color:var(--accent);cursor:pointer;font-weight:600}
+.auth-switch span:hover{text-decoration:underline}
+/* Floating particles on bg */
+.auth-particle{position:absolute;border-radius:50%;pointer-events:none;animation:floatParticle linear infinite}
+@keyframes floatParticle{0%{transform:translateY(100vh) rotate(0deg);opacity:0}10%{opacity:.6}90%{opacity:.3}100%{transform:translateY(-100px) rotate(720deg);opacity:0}}
 @keyframes fadein{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-.setup-logo{font-size:36px;margin-bottom:8px}
-.setup-title{font-size:22px;font-weight:700;margin-bottom:6px}
-.setup-sub{font-size:12px;color:var(--text1);margin-bottom:20px;line-height:1.7}
-.setup-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:6px}
-.setup-input{width:100%;background:var(--bg1);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text0);font-size:13px;outline:none;transition:border-color .2s;margin-bottom:16px}
-.setup-input:focus{border-color:var(--accent)}
-.setup-input::placeholder{color:var(--text2)}
-.color-picker{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
-.color-opt{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s}
-.color-opt:hover{transform:scale(1.1)}
-.color-opt.sel{border-color:#fff}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.auth-wrap{animation:fadein .4s cubic-bezier(.2,0,.2,1)}
+/* Auth success flash */
+@keyframes successPulse{0%{box-shadow:0 0 0 0 rgba(35,165,90,.4)}100%{box-shadow:0 0 0 20px rgba(35,165,90,0)}}
+.auth-submit.success{background:#23a55a;animation:successPulse .4s ease}
 .btn-big{width:100%;padding:12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:700;transition:background .15s}
 .btn-big:hover{background:var(--accent2)}
 .btn-big:disabled{opacity:.4;cursor:default}
 .setup-err{font-size:11px;color:var(--red);margin-bottom:10px;min-height:16px}
+.setup-input{width:100%;background:var(--bg1);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text0);font-size:13px;outline:none;transition:border-color .2s;margin-bottom:16px}
 .app{display:grid;grid-template-columns:72px 240px 1fr;height:100vh;overflow:hidden}
 .rail{background:var(--bg0);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:2px;overflow-y:auto;overflow-x:hidden;border-right:1px solid var(--border)}
 .rail::-webkit-scrollbar{display:none}
@@ -718,22 +755,144 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
 
 /* Recording indicator pulse */
 @keyframes recPulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ══ GLOBAL ANIMATIONS ══ */
+/* Rail button hover */
+.ri { transition: border-radius .2s cubic-bezier(.4,0,.2,1), background .15s, transform .15s; }
+.ri:hover { transform: scale(1.08); }
+.ri.act { transform: scale(1.0); }
+/* Sidebar DM items */
+.dm-item { transition: background .12s, transform .12s; }
+.dm-item:hover { transform: translateX(2px); }
+.dm-item.act { transform: translateX(0); }
+/* Nav items */
+.nav-item { transition: background .12s, color .12s, transform .12s; }
+.nav-item:hover { transform: translateX(2px); }
+/* Channel items */
+.ch-item { transition: background .1s, color .1s, transform .1s; }
+.ch-item:hover { transform: translateX(2px); }
+/* Avatar hover */
+.msg-av { transition: transform .15s, box-shadow .15s; }
+.msg-av:hover { transform: scale(1.08); }
+/* Message group hover */
+.msg-g { transition: background .1s; }
+/* Toast enhanced */
+.toast { animation: toastIn .3s cubic-bezier(.34,1.56,.64,1); }
+@keyframes toastIn { from{opacity:0;transform:translateX(120%)} to{opacity:1;transform:translateX(0)} }
+.toast-out { animation: toastOut .25s ease forwards; }
+@keyframes toastOut { to{opacity:0;transform:translateX(120%)} }
+/* Voice participant speaking pulse */
+.cw-participant.spk .cw-av { animation: speakPulse 1.2s ease-in-out infinite; }
+@keyframes speakPulse { 0%,100%{box-shadow:0 0 0 3px rgba(35,165,90,.7)} 50%{box-shadow:0 0 0 6px rgba(35,165,90,.3),0 0 20px rgba(35,165,90,.2)} }
+/* Button press effect */
+button:not(:disabled):active { transform: scale(.96) !important; }
+/* Call window participant tile hover */
+.cw-participant { transition: border-color .2s, box-shadow .2s, transform .15s; }
+.cw-participant:hover { transform: scale(1.02); }
+/* React chip hover */
+.react-chip { transition: background .1s, transform .1s; }
+.react-chip:hover { transform: scale(1.05); }
+/* vbar slide in */
+.vbar.vis { animation: slideUp .25s cubic-bezier(.4,0,.2,1); }
+@keyframes slideUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+/* Call window open */
+.cw.vis { animation: cwSlide .3s cubic-bezier(.4,0,.2,1); }
+@keyframes cwSlide { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+/* Settings panel */
+.settings-modal { animation: modalIn .25s cubic-bezier(.34,1.06,.64,1) !important; }
+/* Incoming call */
+.call-incoming { animation: callIn .4s cubic-bezier(.34,1.56,.64,1); }
+@keyframes callIn { from{opacity:0;transform:scale(.85) translateY(-20px)} to{opacity:1;transform:scale(1) translateY(0)} }
+/* Online dot pulse */
+.online { animation: onlinePulse 3s ease-in-out infinite; }
+@keyframes onlinePulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+/* Friends page items */
+.f-item { animation: fadeSlide .2s ease; }
+@keyframes fadeSlide { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+/* Emoji picker pop */
+.emoji-picker { animation: popIn .15s cubic-bezier(.34,1.56,.64,1); }
+@keyframes popIn { from{opacity:0;transform:scale(.8) translateY(4px)} to{opacity:1;transform:scale(1) translateY(0)} }
+/* Reply bar slide */
+.reply-bar.vis { animation: replySlide .2s ease; }
+@keyframes replySlide { from{opacity:0;max-height:0} to{opacity:1;max-height:48px} }
 </style>
 </head>
 <body>
 <div id="statusBar"></div>
 <div id="setupScreen">
-<div class="setup-card">
-  <div class="setup-logo">⚡</div>
-  <div class="setup-title">VoiceLink</div>
-  <div class="setup-sub">Введи имя — и сразу в эфир. Голос работает через сервер, без WebRTC.</div>
-  <div class="setup-label">Твоё имя</div>
-  <input class="setup-input" id="setupName" placeholder="например: Артём" maxlength="24">
-  <div class="setup-label">Цвет аватара</div>
-  <div class="color-picker" id="colorPicker"></div>
-  <div class="setup-err" id="setupErr"></div>
-  <button class="btn-big" id="setupBtn" onclick="startApp()">Войти ⚡</button>
-</div>
+  <!-- Animated bg particles -->
+  <div id="authParticles"></div>
+  <div class="auth-wrap">
+    <!-- Left: branding -->
+    <div class="auth-left">
+      <div class="auth-brand">
+        <span class="auth-logo">⚡</span>
+        <div class="auth-brand-name">VoiceLink</div>
+        <div class="auth-brand-sub">Голосовой чат нового поколения. Быстро, безопасно, без WebRTC.</div>
+      </div>
+      <div class="auth-features">
+        <div class="auth-feat"><div class="auth-feat-icon" style="background:rgba(88,101,242,.2)">🎙</div>Голосовые звонки без задержки</div>
+        <div class="auth-feat"><div class="auth-feat-icon" style="background:rgba(35,165,90,.2)">💬</div>Личные сообщения и серверы</div>
+        <div class="auth-feat"><div class="auth-feat-icon" style="background:rgba(250,166,26,.2)">🖥</div>Демонстрация экрана</div>
+        <div class="auth-feat"><div class="auth-feat-icon" style="background:rgba(237,66,69,.2)">🔒</div>Шифрование и приватность</div>
+      </div>
+    </div>
+    <!-- Right: auth form -->
+    <div class="auth-right">
+      <div class="auth-tabs">
+        <button class="auth-tab act" id="tabLogin" onclick="showAuthTab('login')">Войти</button>
+        <button class="auth-tab" id="tabReg" onclick="showAuthTab('reg')">Регистрация</button>
+      </div>
+
+      <!-- LOGIN -->
+      <div class="auth-form" id="formLogin">
+        <div class="auth-field">
+          <label class="auth-label">Имя пользователя</label>
+          <input class="auth-input" id="loginName" placeholder="Твоё имя" maxlength="24" autocomplete="username">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Пароль <span style="color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0">(необязательно)</span></label>
+          <input class="auth-input" id="loginPass" type="password" placeholder="Пароль (если есть)" autocomplete="current-password">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Цвет аватара</label>
+          <div class="color-picker" id="colorPickerLogin"></div>
+        </div>
+        <div class="auth-err" id="loginErr"></div>
+        <button class="auth-submit" id="loginBtn" onclick="doLogin()">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none"><path d="M3 9h12M10 5l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Войти
+        </button>
+        <div class="auth-switch">Нет аккаунта? <span onclick="showAuthTab('reg')">Создать</span></div>
+      </div>
+
+      <!-- REGISTER -->
+      <div class="auth-form hidden" id="formReg">
+        <div class="auth-field">
+          <label class="auth-label">Имя пользователя</label>
+          <input class="auth-input" id="regName" placeholder="Придумай имя" maxlength="24" autocomplete="username">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Email <span style="color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0">(необязательно)</span></label>
+          <input class="auth-input" id="regEmail" type="email" placeholder="example@mail.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Пароль</label>
+          <input class="auth-input" id="regPass" type="password" placeholder="Минимум 6 символов" autocomplete="new-password">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Цвет аватара</label>
+          <div class="color-picker" id="colorPickerReg"></div>
+        </div>
+        <div class="auth-err" id="regErr"></div>
+        <button class="auth-submit" id="regBtn" onclick="doRegister()">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Создать аккаунт
+        </button>
+        <div class="auth-switch">Уже есть аккаунт? <span onclick="showAuthTab('login')">Войти</span></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="app" id="appRoot" style="display:none">
@@ -1013,17 +1172,157 @@ AVCOLORS.forEach((c,i)=>{
 // ══════════════════════════════════════
 // SETUP
 // ══════════════════════════════════════
-window.startApp=function(){
-  const name=document.getElementById('setupName').value.trim();
-  if(!name){document.getElementById('setupErr').textContent='Введи имя';return;}
-  ME.name=name;ME.color=chosenColor;ME.init=name[0].toUpperCase();
-  ME.tag='#'+String(Math.floor(Math.random()*9000)+1000);
-  myUid='u_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-  document.getElementById('setupBtn').disabled=true;
-  document.getElementById('setupBtn').textContent='Подключение...';
-  connectWS();
+// ── Auth screen ──
+let chosenColorLogin=AVCOLORS[0];
+let chosenColorReg=AVCOLORS[1];
+
+function initColorPickers(){
+  ['colorPickerLogin','colorPickerReg'].forEach((id,pi)=>{
+    const cp=document.getElementById(id);if(!cp)return;
+    cp.innerHTML='';
+    AVCOLORS.forEach((col,i)=>{
+      const d=document.createElement('div');
+      d.className='color-opt'+(i===0?' sel':'');
+      d.style.background=col;
+      d.title=col;
+      d.onclick=()=>{
+        cp.querySelectorAll('.color-opt').forEach(x=>x.classList.remove('sel'));
+        d.classList.add('sel');
+        if(pi===0) chosenColorLogin=col; else chosenColorReg=col;
+      };
+      cp.appendChild(d);
+    });
+  });
+}
+
+window.showAuthTab=function(tab){
+  document.getElementById('formLogin').classList.toggle('hidden',tab!=='login');
+  document.getElementById('formReg').classList.toggle('hidden',tab!=='reg');
+  document.getElementById('tabLogin').classList.toggle('act',tab==='login');
+  document.getElementById('tabReg').classList.toggle('act',tab!=='login');
+  // Slide animation
+  const form=document.getElementById(tab==='login'?'formLogin':'formReg');
+  form.style.animation='slideIn .25s ease';
+  setTimeout(()=>{if(form)form.style.animation='';},300);
 };
-document.getElementById('setupName').addEventListener('keydown',e=>{if(e.key==='Enter')startApp();});
+
+function _launch(name,color,uid,tag){
+  ME.name=name;ME.color=color;ME.init=name[0].toUpperCase();
+  ME.tag=tag||('#'+String(Math.floor(Math.random()*9000)+1000));
+  myUid=uid||('u_'+Date.now()+'_'+Math.random().toString(36).slice(2,6));
+  // Save to localStorage
+  localStorage.setItem('vl_name',name);
+  localStorage.setItem('vl_color',color);
+  localStorage.setItem('vl_uid',myUid);
+  localStorage.setItem('vl_tag',ME.tag);
+  connectWS();
+}
+
+window.doLogin=function(){
+  const name=document.getElementById('loginName').value.trim();
+  const pass=document.getElementById('loginPass').value;
+  const errEl=document.getElementById('loginErr');
+  errEl.textContent='';
+  if(!name){errEl.innerHTML='⚠ Введи имя';document.getElementById('loginName').classList.add('err');return;}
+  document.getElementById('loginName').classList.remove('err');
+  // Check saved accounts
+  const saved=_getAccounts();
+  const acc=saved.find(a=>a.name.toLowerCase()===name.toLowerCase());
+  if(acc){
+    if(acc.pass&&pass!==acc.pass){errEl.innerHTML='⚠ Неверный пароль';return;}
+    _animateSubmit('loginBtn',()=>_launch(acc.name,acc.color,acc.uid,acc.tag));
+  } else {
+    // Auto-register on first login
+    const newAcc={name,color:chosenColorLogin,pass:pass||'',uid:'u_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),tag:'#'+String(Math.floor(Math.random()*9000)+1000)};
+    saved.push(newAcc);_saveAccounts(saved);
+    _animateSubmit('loginBtn',()=>_launch(newAcc.name,newAcc.color,newAcc.uid,newAcc.tag));
+  }
+};
+
+window.doRegister=function(){
+  const name=document.getElementById('regName').value.trim();
+  const pass=document.getElementById('regPass').value;
+  const errEl=document.getElementById('regErr');
+  errEl.textContent='';
+  if(!name){errEl.innerHTML='⚠ Введи имя';document.getElementById('regName').classList.add('err');return;}
+  if(name.length<2){errEl.innerHTML='⚠ Имя минимум 2 символа';return;}
+  if(pass&&pass.length<6){errEl.innerHTML='⚠ Пароль минимум 6 символов';return;}
+  document.getElementById('regName').classList.remove('err');
+  const saved=_getAccounts();
+  if(saved.find(a=>a.name.toLowerCase()===name.toLowerCase())){
+    errEl.innerHTML='⚠ Имя занято';return;
+  }
+  const newAcc={name,color:chosenColorReg,pass:pass||'',uid:'u_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),tag:'#'+String(Math.floor(Math.random()*9000)+1000)};
+  saved.push(newAcc);_saveAccounts(saved);
+  _animateSubmit('regBtn',()=>_launch(newAcc.name,newAcc.color,newAcc.uid,newAcc.tag));
+};
+
+function _getAccounts(){try{return JSON.parse(localStorage.getItem('vl_accounts')||'[]');}catch{return[];}}
+function _saveAccounts(arr){localStorage.setItem('vl_accounts',JSON.stringify(arr));}
+
+function _animateSubmit(btnId,cb){
+  const btn=document.getElementById(btnId);if(!btn)return;
+  btn.disabled=true;
+  btn.classList.add('success');
+  btn.innerHTML='<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><path d="M3 9l4 4 8-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Подключение...';
+  setTimeout(()=>{
+    // Fade out auth screen
+    document.getElementById('setupScreen').style.transition='opacity .4s ease';
+    document.getElementById('setupScreen').style.opacity='0';
+    setTimeout(()=>{cb();},400);
+  },600);
+}
+
+// Auto-login if saved session
+function tryAutoLogin(){
+  const name=localStorage.getItem('vl_name');
+  const color=localStorage.getItem('vl_color');
+  const uid=localStorage.getItem('vl_uid');
+  const tag=localStorage.getItem('vl_tag');
+  if(name&&uid){
+    // Pre-fill login form
+    const li=document.getElementById('loginName');
+    if(li)li.value=name;
+    // Update color picker selection
+    if(color&&document.getElementById('colorPickerLogin')){
+      setTimeout(()=>{
+        document.querySelectorAll('#colorPickerLogin .color-opt').forEach(el=>{
+          el.classList.toggle('sel',el.style.background===color||el.style.backgroundColor===color);
+        });
+        chosenColorLogin=color;
+      },100);
+    }
+  }
+}
+
+// Floating particles
+function spawnParticles(){
+  const container=document.getElementById('authParticles');
+  if(!container)return;
+  for(let i=0;i<12;i++){
+    const p=document.createElement('div');
+    const size=Math.random()*6+3;
+    p.style.cssText=`position:absolute;width:${size}px;height:${size}px;border-radius:50%;background:rgba(88,101,242,${Math.random()*.3+.1});left:${Math.random()*100}%;animation:floatParticle ${Math.random()*8+6}s ${Math.random()*-10}s linear infinite`;
+    container.appendChild(p);
+  }
+}
+
+// Init on DOM ready
+document.addEventListener('DOMContentLoaded',()=>{
+  initColorPickers();
+  tryAutoLogin();
+  spawnParticles();
+});
+
+// Enter key support
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter')return;
+  const loginVisible=!document.getElementById('formLogin').classList.contains('hidden');
+  if(loginVisible)doLogin(); else doRegister();
+});
+
+// startApp kept as compat alias
+window.startApp=window.doLogin;
 
 // ══════════════════════════════════════
 // WEBSOCKET
@@ -3106,7 +3405,10 @@ window.toast=function(title,icon,body,type='info'){
   const tc=document.getElementById('toastBox');
   const t=document.createElement('div');t.className='toast t-'+type;
   t.innerHTML=`<div class="toast-title">${icon} ${title}</div><div class="toast-body">${esc(String(body))}</div>`;
-  tc.appendChild(t);setTimeout(()=>{if(t.parentNode)t.remove();},4000);t.onclick=()=>t.remove();
+  tc.appendChild(t);
+  const remove=()=>{t.classList.add('toast-out');setTimeout(()=>{if(t.parentNode)t.remove();},250);};
+  setTimeout(remove,3500);
+  t.onclick=remove;
 };
 function setWsDot(c){const el=document.getElementById('wsDot');if(!el)return;el.style.color=c==='green'?'var(--green)':c==='amber'?'var(--amber)':'var(--red)';}
 function showStatus(msg,type){const el=document.getElementById('statusBar');if(!el)return;el.textContent=msg;el.className=`vis sb-${type==='connecting'?'connecting':type==='connected'?'connected':'error'}`;}
