@@ -1,8 +1,16 @@
 {
   "name": "voicelink",
-  "version": "1.0.0",
+  "version": "1.0.32",
+  "description": "VoiceLink — Discord-like voice chat via WebSocket relay",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "ws": "^8.16.0" },
-  "engines": { "node": ">=18" }
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }

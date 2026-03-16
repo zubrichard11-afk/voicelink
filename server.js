@@ -49,7 +49,17 @@ const server = http.createServer((req, res) => {
   } else { res.writeHead(404); res.end(); }
 });
 
-const wss = new WebSocketServer({ server, maxPayload: 100 * 1024 * 1024 });
+const wss = new WebSocketServer({
+  server,
+  maxPayload: 100 * 1024 * 1024,
+  perMessageDeflate: {
+    zlibDeflateOptions: { level: 1 }, // fastest compression
+    zlibInflateOptions: { chunkSize: 10 * 1024 },
+    clientNoContextTakeover: true,
+    serverNoContextTakeover: true,
+    threshold: 512 // only compress packets > 512 bytes
+  }
+});
 
 const send = (uid, data) => {
   const u = users.get(uid);
@@ -92,21 +102,20 @@ wss.on('connection', ws => {
   let pingInterval = null;
   let lastPingTime = 0;
 
-  // ── Ping measurement ──
+  // ── Ping measurement — every 3s for responsive display ──
   pingInterval = setInterval(() => {
     if (!me || ws.readyState !== 1) return;
     lastPingTime = Date.now();
     ws.ping();
-  }, 5000);
+  }, 3000);
 
   ws.on('pong', () => {
     if (!me) return;
     const ping = Date.now() - lastPingTime;
     const u = users.get(me);
     if (u) { u.ping = ping; }
-    // Broadcast ping update to room
-    const u2 = users.get(me);
-    if (u2?.room) broadcastRoom(u2.room, JSON.stringify({type:'ping_update',uid:me,ping}));
+    // Only broadcast to room, not all users (reduces traffic)
+    if (u?.room) broadcastRoom(u.room, JSON.stringify({type:'ping_update',uid:me,ping}), me);
     ws.send(JSON.stringify({type:'my_ping',ping}));
   });
 
