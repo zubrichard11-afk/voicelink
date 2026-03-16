@@ -1675,7 +1675,13 @@ function getPeerState(uid){
     gainNode.connect(ctx.destination);
     peerAudio.set(uid,{nextTime:0, gainNode, pingMs:30});
   }
-  return peerAudio.get(uid);
+  const state=peerAudio.get(uid);
+  // Detect stale queue (e.g. after reconnect) — reset if nextTime too far ahead
+  const ctx=getRemoteCtx();
+  if(ctx && state.nextTime > ctx.currentTime + 0.5){
+    state.nextTime=0; // will be reset to now+BUFFER_AHEAD on next packet
+  }
+  return state;
 }
 
 function cleanupPeerAudio(uid){
@@ -1716,16 +1722,18 @@ function handleAudioChunk(buf){
   for(let i=0;i<i16.length;i++) f32[i]=i16[i]/32767;
   const ctx=getRemoteCtx();
   if(!ctx) return;
-  // Must resume before playing (Яндекс/Chrome autoplay policy)
-  if(ctx.state==='suspended'){ctx.resume().catch(()=>{});return;}
+  // Force resume — critical, don't skip even if "running"
+  if(ctx.state!=='running'){
+    ctx.resume().catch(()=>{});
+    // Drop packet if context not ready — don't queue up stale audio
+    if(ctx.state==='suspended') return;
+  }
   const state=getPeerState(fromUid);
   state.gainNode.gain.value=window._volumeGain||1;
-  // createBuffer with peerSampleRate — browser resamples automatically to ctx.sampleRate
   let abuf;
   try{
     abuf=ctx.createBuffer(1,f32.length,peerSampleRate);
   }catch(e){
-    // Some browsers don't support arbitrary sampleRate — use ctx native rate
     abuf=ctx.createBuffer(1,f32.length,ctx.sampleRate);
   }
   abuf.copyToChannel(f32,0);
@@ -1733,10 +1741,13 @@ function handleAudioChunk(buf){
   src.buffer=abuf;
   src.connect(state.gainNode);
   const now=ctx.currentTime;
-  // Adaptive jitter buffer: base on measured ping (default 30ms, max 120ms)
-  const pingMs=state.pingMs||30;
-  const BUFFER_AHEAD=Math.min(0.12, Math.max(0.02, pingMs/1000 * 0.6));
-  if(state.nextTime < now + 0.002){
+  // Minimal fixed buffer: 30ms — enough for jitter, low enough for real-time feel
+  const BUFFER_AHEAD=0.03;
+  // If we're more than 300ms behind realtime — hard reset (stale audio from suspension)
+  if(state.nextTime < now - 0.1 || state.nextTime > now + 0.5){
+    state.nextTime = now + BUFFER_AHEAD;
+  }
+  if(state.nextTime < now){
     state.nextTime = now + BUFFER_AHEAD;
   }
   src.start(state.nextTime);
@@ -3872,31 +3883,25 @@ function hideStatus(){const el=document.getElementById('statusBar');if(el)el.cla
         <div class="s-section">
           <div class="s-section-title">Версия</div>
           <div style="font-size:13px;color:#dcddde;line-height:2">
-            VoiceLink <strong>v32</strong><br>
-            Голос: <strong>PCM 48kHz · 20ms chunks · Adaptive jitter buffer</strong><br>
+            VoiceLink <strong>v33</strong><br>
+            Голос: <strong>PCM 48kHz · 20ms · Adaptive jitter buffer</strong><br>
             Шифрование: <strong>WSS (TLS)</strong><br>
             Мой пинг: <strong id="aboutPing">—</strong>
           </div>
         </div>
         <div class="s-section">
           <div class="s-section-title">Сервер и регион</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Текущий сервер: <span id="aboutServerUrl" style="color:#dcddde">—</span></div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Если пинг высокий — попробуй другой сервер. Пинг к текущему: <span id="aboutPing2" style="color:var(--green);font-weight:700">—</span></div>
-          <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-            <button onclick="testAndSetServer('')" style="padding:7px 14px;background:var(--bg3);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:12px;cursor:pointer;color:#dcddde;font-family:var(--font)">🌍 Авто (текущий)</button>
-          </div>
-          <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Или введи адрес своего сервера:</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Текущий сервер: <span id="aboutServerUrl" style="color:#dcddde">—</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Пинг к серверу: <span id="aboutPing2" style="font-weight:700">—</span></div>
           <div style="display:flex;gap:8px">
-            <input id="customServerInp" class="auth-input" placeholder="wss://my-server.railway.app" style="flex:1;font-size:12px;padding:8px 12px" value="${localStorage.getItem('vl_server_url')||''}">
-            <button onclick="saveCustomServer()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font)">Сохранить</button>
+            <input id="customServerInp" class="auth-input" placeholder="wss://my-server.up.railway.app" style="flex:1;font-size:12px;padding:8px 12px">
+            <button onclick="saveCustomServer()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font);flex-shrink:0">Сохранить</button>
           </div>
-          <div style="font-size:11px;color:var(--text2);margin-top:10px">💡 Для минимального пинга из России — задеплой отдельный инстанс на <strong>Timeweb Cloud</strong>, <strong>VK Cloud</strong> или <strong>Yandex Cloud</strong> и вставь адрес сюда</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:10px;line-height:1.6">💡 Для низкого пинга из России задеплой сервер на <strong style="color:#dcddde">Timeweb Cloud</strong>, <strong style="color:#dcddde">VK Cloud</strong> или <strong style="color:#dcddde">Yandex Cloud</strong> и вставь адрес выше</div>
         </div>
         <div class="s-section">
           <div class="s-section-title">Технологии</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
-            ${['WebSocket','Web Audio API','AudioWorklet','getUserMedia','Adaptive Jitter Buffer','VAD + Noise Gate','Echo Cancel','TLS/WSS'].map(t=>`<span style="background:#1e1f22;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:4px 12px;font-size:12px;color:#dcddde">${t}</span>`).join('')}
-          </div>
+          <div id="aboutTechTags" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
         </div>
       </div>
 
@@ -4095,12 +4100,20 @@ window.showSPage=function(id,btn){
     const p1=document.getElementById('aboutPing');
     const p2=document.getElementById('aboutPing2');
     const sv=document.getElementById('aboutServerUrl');
+    const inp=document.getElementById('customServerInp');
+    const tags=document.getElementById('aboutTechTags');
     const myPing=window._myPing;
-    if(p1) p1.textContent=myPing?(myPing+'ms — '+(myPing<50?'🟢 Отлично':myPing<100?'🟡 Норм':'🔴 Высокий')):'подключитесь к голосовому';
-    if(p2) p2.textContent=myPing?(myPing+'ms'):'—';
+    if(p1) p1.textContent=myPing?(myPing+'ms — '+(myPing<50?'🟢 Отлично':myPing<100?'🟡 Норм':'🔴 Высокий')):'—  войди в голосовой';
+    if(p2){
+      p2.textContent=myPing?(myPing+'ms'):'—';
+      if(myPing) p2.style.color=myPing<50?'var(--green)':myPing<100?'var(--amber)':'var(--red)';
+    }
     if(sv) sv.textContent=localStorage.getItem('vl_server_url')||location.host+' (текущий)';
-    // Color ping indicator
-    if(p2&&myPing){p2.style.color=myPing<50?'var(--green)':myPing<100?'var(--amber)':'var(--red)';}
+    if(inp) inp.value=localStorage.getItem('vl_server_url')||'';
+    if(tags){
+      const techs=['WebSocket','Web Audio API','AudioWorklet','getUserMedia','Adaptive Jitter Buffer','VAD + Noise Gate','Echo Cancel','TLS/WSS'];
+      tags.innerHTML=techs.map(t=>`<span style="background:#1e1f22;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:4px 12px;font-size:12px;color:#dcddde">${t}</span>`).join('');
+    }
   }
 };
 
