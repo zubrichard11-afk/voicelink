@@ -1158,16 +1158,8 @@ let selectedOutputId='';   // '' = default
 let micGainValue=1.0;      // 0..2
 window._volumeGain=1.0;    // output gain
 
-// color picker
-const cp=document.getElementById('colorPicker');
-let chosenColor=AVCOLORS[0];
-AVCOLORS.forEach((c,i)=>{
-  const d=document.createElement('div');
-  d.className='color-opt'+(i===0?' sel':'');
-  d.style.background=c;
-  d.onclick=()=>{chosenColor=c;document.querySelectorAll('.color-opt').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');};
-  cp.appendChild(d);
-});
+// color picker — legacy ref removed, now handled by initColorPickers()
+let chosenColor=AVCOLORS[0]; // kept for compat
 
 // ══════════════════════════════════════
 // SETUP
@@ -1314,11 +1306,13 @@ document.addEventListener('DOMContentLoaded',()=>{
   spawnParticles();
 });
 
-// Enter key support
+// Enter key support — only when auth screen visible
 document.addEventListener('keydown',e=>{
-  if(e.key!=='Enter')return;
+  if(e.key!=='Enter') return;
+  const setup=document.getElementById('setupScreen');
+  if(!setup || setup.style.display==='none' || setup.style.opacity==='0') return;
   const loginVisible=!document.getElementById('formLogin').classList.contains('hidden');
-  if(loginVisible)doLogin(); else doRegister();
+  if(loginVisible) doLogin(); else doRegister();
 });
 
 // startApp kept as compat alias
@@ -1771,7 +1765,8 @@ function handleScreenFrame(hdr,jpegBuf){
 // LAUNCH APP
 // ══════════════════════════════════════
 function launchApp(){
-  document.getElementById('setupScreen').style.display='none';
+  const ss=document.getElementById('setupScreen');
+  if(ss) ss.style.display='none';
   document.getElementById('appRoot').style.display='grid';
   ['myAvEl'].forEach(id=>{
     const el=document.getElementById(id);if(!el)return;
