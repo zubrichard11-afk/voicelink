@@ -472,10 +472,8 @@ input,textarea{font-family:var(--font)}
 .s-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:12px;min-width:0}
 .s-row:last-child{border-bottom:none}
 .s-row-info{flex:1;min-width:0;margin-right:8px}
-.s-row-label{font-size:13px;font-weight:600;color:#dcddde;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.s-row-desc{font-size:11px;color:#72767d;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.s-slider-wrap{display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:120px}
-.s-slider-val{font-size:11px;color:#72767d;min-width:32px;text-align:right;flex-shrink:0}
+.s-row-label{font-size:13px;font-weight:600;color:#dcddde;margin-bottom:2px}
+.s-row-desc{font-size:11px;color:#72767d;line-height:1.4}
 .s-toggle{position:relative;width:44px;height:24px;flex-shrink:0}
 .s-toggle input{opacity:0;width:0;height:0}
 .s-toggle-slider{position:absolute;inset:0;background:#4f545c;border-radius:12px;cursor:pointer;transition:background .2s}
@@ -693,8 +691,6 @@ button, .nav-item, .ch-item, .dm-item, .f-item, .ri {
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
 
 /* Settings */
-.settings-modal { border-radius: 12px; animation: modalIn .2s cubic-bezier(.4,0,.2,1); }
-
 /* Day divider */
 .day-div { opacity: .6; }
 .day-line { background: rgba(255,255,255,.08); }
@@ -1323,9 +1319,10 @@ window.startApp=window.doLogin;
 // ══════════════════════════════════════
 function connectWS(){
   const proto=location.protocol==='https:'?'wss:':'ws:';
-  // Allow custom server URL from settings (for region selection)
+  // Use Render server by default (Frankfurt, lower latency)
+  const defaultServer='wss://voicelink-9ien.onrender.com';
   const customServer=localStorage.getItem('vl_server_url');
-  const wsUrl=customServer||proto+'//'+location.host;
+  const wsUrl=customServer||(location.host.includes('railway')?defaultServer:proto+'//'+location.host);
   ws=new WebSocket(wsUrl);
   ws.binaryType='arraybuffer';
   showStatus('Подключаемся...','connecting');
@@ -1436,6 +1433,7 @@ function handleWS(d){
       break;
     case 'voice_update': vcRooms=d.rooms||{};scheduleUI(()=>{renderVCUsers();updateVCBar();updateWidget();});break;
     case 'voice_joined':
+      playSound('connect');
       toast('Голосовой','🔊','В канале: '+(d.peers.length+1)+' чел.','success');
       (d.peers||[]).forEach(p=>{ if(p.screenSharing) rtcRequestScreen(p.uid); });
       break;
@@ -1538,12 +1536,11 @@ async function startMicRelay(){
   micGainNode.connect(micProcessor);
 
   // ── Aggressive Noise Gate state ──
-  let _ngSmooth=0;       // smoothed RMS level
-  let _ngFloor=0.001;    // adaptive noise floor
-  let _ngHold=0;         // hold counter (frames)
-  let _ngSilFrames=0;    // consecutive silent frames
-  const NG_ATTACK=0.2;   // how fast gate opens
-  const NG_HOLD=12;      // frames to hold open (~240ms at 20ms chunks)
+  let _ngSmooth=0;       // smoothed RMS for speaking indicator
+  let _ngFloor=0.0005;   // background noise floor (tracks silence only)
+  let _ngHold=0;         // hold frames after speech
+  let _ngFloorTimer=0;   // only update floor during silence
+  const NG_HOLD=18;      // ~360ms hold — prevents chopping words
 
   micProcessor.port.onmessage=e=>{
     if(!inVoice) return;
@@ -1553,46 +1550,53 @@ async function startMicRelay(){
     const vadOn=localStorage.getItem('vl_vad')!=='0';
     const noiseOn=localStorage.getItem('vl_noise')!=='0';
 
-    // ── Adaptive Noise Gate ──
+    // ── Noise Gate ──
+    // Instant RMS (no smoothing on detection — avoids cutting start of words)
     let rms=0;
     for(let i=0;i<f32.length;i++) rms+=f32[i]*f32[i];
     rms=Math.sqrt(rms/f32.length);
 
-    // Adaptive noise floor — slowly tracks background level
-    _ngFloor=_ngFloor*0.999+rms*0.001;
-    const noiseFloor=Math.max(_ngFloor*3, 0.003); // 3x floor = speech threshold
+    // VAD threshold from settings slider (1-10 → 0.002-0.02)
+    const vadThreshSetting=parseFloat(localStorage.getItem('vl_thresh')||'2');
+    const baseThresh=noiseOn ? (vadThreshSetting/10)*0.02 : 0.001;
 
-    // Fixed threshold when noise suppression on: ~-50dB, off: very low
-    const thresh=noiseOn ? Math.max(noiseFloor, 0.006) : 0.001;
+    // Update noise floor ONLY during silence to prevent speech from raising it
+    if(rms < baseThresh){
+      _ngFloor=_ngFloor*0.998+rms*0.002; // slow decay during silence
+      _ngFloorTimer++;
+    }
+    // Adaptive threshold = max(setting, 4x noise floor) — never below setting
+    const thresh=Math.max(baseThresh, _ngFloor*4);
 
-    // Smooth RMS
-    _ngSmooth=_ngSmooth*(1-NG_ATTACK)+rms*NG_ATTACK;
+    // Smooth only for speaking indicator display, not for gate decision
+    _ngSmooth=_ngSmooth*0.7+rms*0.3;
 
     let gateOpen=false;
     if(!vadOn){
       gateOpen=true;
-    } else if(_ngSmooth > thresh){
+    } else if(rms > thresh){
+      // Instant open on speech (no smoothing delay)
       gateOpen=true;
       _ngHold=NG_HOLD;
     } else if(_ngHold>0){
       _ngHold--;
-      gateOpen=true;
+      gateOpen=true; // hold open — don't cut end of words
     } else {
       gateOpen=false;
     }
 
-    // When gate closed — send silence (zeros) not noise
+    // Gate: send silence when closed, real audio when open
     const out=new Float32Array(f32.length);
     if(gateOpen){
       for(let i=0;i<f32.length;i++) out[i]=f32[i];
     }
-    // else out stays zero
+    // else zeros — no background noise transmitted
 
     const i16=new Int16Array(out.length);
     for(let i=0;i<out.length;i++) i16[i]=Math.max(-32768,Math.min(32767,out[i]*32767));
     wsSendBinary(i16.buffer);
 
-    const spk=gateOpen&&rms>thresh*0.3;
+    const spk=gateOpen&&_ngSmooth>thresh*0.4;
     const prevSpk=!!(vcRooms[currentVoiceRoom]&&vcRooms[currentVoiceRoom][myUid]&&vcRooms[currentVoiceRoom][myUid].speaking)||window._mySpeaking;
     if(spk!==prevSpk){
       window._mySpeaking=spk;
@@ -2305,14 +2309,24 @@ window.showFriends=function(tab){
 function renderFTab(t){
   const el=document.getElementById('friendsBody');if(!el)return;
   if(t==='add'){
+    const online=Object.entries(onlineUsers).filter(([uid,u])=>uid!==myUid&&u.name&&!friends.has(uid));
+    const onlineHtml=online.length
+      ?'<div style="margin-top:14px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);font-weight:600;margin-bottom:8px">Онлайн сейчас — '+online.length+'</div>'+
+        online.map(([uid,u])=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--bg3);margin-bottom:4px;cursor:pointer;transition:background .1s" onclick="document.getElementById('afInp').value='${esc(u.name)}';document.getElementById('afBtn2').disabled=false" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
+          <div style="width:32px;height:32px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${u.init}</div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--text0)">${esc(u.name)}</div><div style="font-size:11px;color:var(--green)">● В сети</div></div>
+          <div style="margin-left:auto;font-size:11px;color:var(--accent)">Нажми чтобы выбрать</div>
+        </div>`).join('')+'</div>'
+      :'<div style="margin-top:14px;padding:12px;background:var(--bg3);border-radius:8px;font-size:12px;color:var(--text2)">😶 Никого нет онлайн.<br>Убедись что вы оба подключены к одному серверу.</div>';
     el.innerHTML=`<div class="add-friend-box">
       <div class="af-title">Добавить в друзья</div>
-      <div class="af-sub">Введи точное имя. Пользователь должен быть онлайн прямо сейчас.</div>
+      <div class="af-sub">Введи имя или выбери из списка онлайн.</div>
       <div class="af-row">
-        <input class="af-inp" id="afInp" placeholder="Имя" oninput="document.getElementById('afBtn2').disabled=this.value.length<2">
+        <input class="af-inp" id="afInp" placeholder="Имя пользователя" oninput="document.getElementById('afBtn2').disabled=this.value.length<1">
         <button class="btn-ok btn-grn" id="afBtn2" onclick="sendFReq2()" disabled>Отправить</button>
       </div>
       <div id="afMsg2" style="font-size:12px;margin-top:8px;min-height:16px"></div>
+      ${onlineHtml}
     </div>`;return;
   }
   if(t==='pending'){
@@ -2354,17 +2368,27 @@ window.removeFriend=function(uid){friends.delete(uid);toast('Удалено','�
 window.sendFriendReq=function(){const v=document.getElementById('addFriendInp').value.trim();closeModal('addFriendModal');doFReq(v);};
 window.sendFReq2=function(){doFReq(document.getElementById('afInp').value.trim(),true);};
 function doFReq(name,inline=false){
-  const match=Object.entries(onlineUsers).find(([uid,u])=>u.name.toLowerCase()===name.toLowerCase());
+  const trimmed=name.trim();
+  if(!trimmed) return;
   const msg=document.getElementById('afMsg2');
+  // Search online users by name (case insensitive, partial match)
+  const match=Object.entries(onlineUsers).find(([uid,u])=>
+    u.name.toLowerCase()===trimmed.toLowerCase()
+  );
   if(match){
     const[uid,u]=match;
+    if(uid===myUid){toast('Ошибка','❌','Нельзя добавить себя','error');return;}
     if(friends.has(uid)){toast('Уже друзья','👥',u.name+' уже в списке','info');return;}
+    if(sentRequests.has(uid)){toast('Запрос','⏳','Уже отправлен '+u.name,'info');return;}
     sentRequests.add(uid);wsSend({type:'friend_req',to:uid});
     toast('Запрос отправлен','✅',u.name+' получит запрос','success');
-    if(inline&&msg){msg.style.color='var(--green)';msg.textContent='Запрос '+u.name+' отправлен!';}
+    if(inline&&msg){msg.style.color='var(--green)';msg.textContent='✅ Запрос '+u.name+' отправлен!';}
   }else{
-    toast('Не найден','❌','"'+name+'" не онлайн','error');
-    if(inline&&msg){msg.style.color='var(--red)';msg.textContent='Пользователь не найден или не в сети.';}
+    // Show who IS online to help find the right name
+    const online=Object.values(onlineUsers).filter(u=>u.name).map(u=>u.name);
+    const hint=online.length?'Онлайн сейчас: '+online.join(', '):'Никого нет онлайн. Убедитесь что вы на одном сервере.';
+    toast('Не найден','❌','"'+trimmed+'" не найден','error');
+    if(inline&&msg){msg.style.color='var(--red)';msg.innerHTML='❌ Не найден<br><span style="font-size:10px;color:var(--text2)">'+esc(hint)+'</span>';}
   }
 }
 function updateReqBadge(){const b=document.getElementById('reqBadge');if(!b)return;if(friendRequests.length){b.textContent=friendRequests.length;b.style.display='';}else b.style.display='none';}
@@ -2899,6 +2923,7 @@ window.leaveVoice=async function(){
   inVoice=false;
   wsSend({type:'leave_voice'});
   stopRingTone();
+  playSound('disconnect');
   await stopMicRelay();
   peerAudio.forEach((_,uid)=>cleanupPeerAudio(uid));
   peerAudio.clear();
@@ -2973,35 +2998,102 @@ window.startCall=async function(uid){
 
 // ── Ring tone synthesizer ──
 let _ringInterval=null;
+
+// Play a sound effect
+function playSound(type){
+  try{
+    const ctx=new AudioContext();
+    const gain=ctx.createGain();
+    gain.connect(ctx.destination);
+
+    if(type==='disconnect'){
+      // Descending two-tone — like Discord disconnect
+      const o1=ctx.createOscillator();
+      const o2=ctx.createOscillator();
+      o1.connect(gain);o2.connect(gain);
+      o1.frequency.setValueAtTime(600,ctx.currentTime);
+      o1.frequency.linearRampToValueAtTime(300,ctx.currentTime+0.3);
+      o2.frequency.setValueAtTime(500,ctx.currentTime+0.05);
+      o2.frequency.linearRampToValueAtTime(250,ctx.currentTime+0.35);
+      gain.gain.setValueAtTime(0.3,ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0,ctx.currentTime+0.4);
+      o1.start();o1.stop(ctx.currentTime+0.4);
+      o2.start(ctx.currentTime+0.05);o2.stop(ctx.currentTime+0.4);
+      o2.onended=()=>ctx.close();
+
+    } else if(type==='connect'){
+      // Ascending — joined call
+      const o=ctx.createOscillator();
+      o.connect(gain);
+      o.frequency.setValueAtTime(400,ctx.currentTime);
+      o.frequency.linearRampToValueAtTime(800,ctx.currentTime+0.2);
+      gain.gain.setValueAtTime(0.2,ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0,ctx.currentTime+0.25);
+      o.start();o.stop(ctx.currentTime+0.25);
+      o.onended=()=>ctx.close();
+
+    } else if(type==='mute'){
+      const o=ctx.createOscillator();
+      o.connect(gain);
+      o.frequency.setValueAtTime(300,ctx.currentTime);
+      gain.gain.setValueAtTime(0.15,ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0,ctx.currentTime+0.12);
+      o.start();o.stop(ctx.currentTime+0.12);
+      o.onended=()=>ctx.close();
+
+    } else if(type==='unmute'){
+      const o=ctx.createOscillator();
+      o.connect(gain);
+      o.frequency.setValueAtTime(500,ctx.currentTime);
+      gain.gain.setValueAtTime(0.15,ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0,ctx.currentTime+0.12);
+      o.start();o.stop(ctx.currentTime+0.12);
+      o.onended=()=>ctx.close();
+    }
+  }catch(e){}
+}
+
 function playRingTone(outgoing=false){
   stopRingTone();
-  let beat=0;
   function playBeep(){
     try{
       const ctx=new AudioContext();
-      const osc=ctx.createOscillator();
       const gain=ctx.createGain();
-      osc.connect(gain);gain.connect(ctx.destination);
+      gain.connect(ctx.destination);
       if(outgoing){
-        // Outgoing: two-tone beep (like Discord)
-        osc.frequency.setValueAtTime(480,ctx.currentTime);
-        osc.frequency.setValueAtTime(440,ctx.currentTime+0.1);
+        // Outgoing: soft two-tone
+        const o=ctx.createOscillator();
+        o.connect(gain);
+        o.frequency.setValueAtTime(480,ctx.currentTime);
+        o.frequency.setValueAtTime(440,ctx.currentTime+0.15);
+        gain.gain.setValueAtTime(0,ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.2,ctx.currentTime+0.03);
+        gain.gain.setValueAtTime(0.2,ctx.currentTime+0.25);
+        gain.gain.linearRampToValueAtTime(0,ctx.currentTime+0.4);
+        o.start();o.stop(ctx.currentTime+0.4);
+        o.onended=()=>ctx.close();
       } else {
-        // Incoming: three rising tones
-        osc.frequency.setValueAtTime(880,ctx.currentTime);
-        osc.frequency.setValueAtTime(1100,ctx.currentTime+0.08);
-        osc.frequency.setValueAtTime(1320,ctx.currentTime+0.16);
+        // Incoming: LOUDER three-tone melody — clearly audible
+        const notes=[880,1100,1320,1100];
+        notes.forEach((freq,i)=>{
+          const o=ctx.createOscillator();
+          const g=ctx.createGain();
+          o.connect(g);g.connect(ctx.destination);
+          o.frequency.setValueAtTime(freq,ctx.currentTime);
+          const t=i*0.12;
+          g.gain.setValueAtTime(0,ctx.currentTime+t);
+          g.gain.linearRampToValueAtTime(0.5,ctx.currentTime+t+0.02); // 0.5 = loud
+          g.gain.setValueAtTime(0.5,ctx.currentTime+t+0.08);
+          g.gain.linearRampToValueAtTime(0,ctx.currentTime+t+0.11);
+          o.start(ctx.currentTime+t);
+          o.stop(ctx.currentTime+t+0.12);
+          if(i===notes.length-1) o.onended=()=>ctx.close();
+        });
       }
-      gain.gain.setValueAtTime(0,ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.25,ctx.currentTime+0.02);
-      gain.gain.setValueAtTime(0.25,ctx.currentTime+(outgoing?0.15:0.2));
-      gain.gain.linearRampToValueAtTime(0,ctx.currentTime+(outgoing?0.25:0.35));
-      osc.start();osc.stop(ctx.currentTime+0.5);
-      osc.onended=()=>ctx.close();
     }catch(e){}
   }
   playBeep();
-  _ringInterval=setInterval(playBeep, outgoing?3000:2000);
+  _ringInterval=setInterval(playBeep, outgoing?3000:1800);
 }
 function stopRingTone(){
   if(_ringInterval){clearInterval(_ringInterval);_ringInterval=null;}
@@ -3046,6 +3138,7 @@ window.toggleMic=function(){
   const cwMicIcon=document.getElementById('cwMicIcon');if(cwMicIcon)cwMicIcon.innerHTML=micMuted?`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor" opacity=".4"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity=".4"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".4"/><line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`:`<svg width="16" height="16" viewBox="0 0 18 18" fill="none"><rect x="6" y="1" width="6" height="9" rx="3" fill="currentColor"/><path d="M3 9c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><line x1="9" y1="15" x2="9" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="6.5" y1="17" x2="11.5" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
   const cwMic=document.getElementById('cwMicBtn');if(cwMic){cwMic.classList.toggle('off',micMuted);}
   const cwMicLbl=document.getElementById('cwMicLabel');if(cwMicLbl)cwMicLbl.textContent=micMuted?'Мут':'Микрофон';
+  playSound(micMuted?'mute':'unmute');
   toast(micMuted?'Замьючен':'Размьючен',micMuted?'🔇':'🎙','','info');
   // Reset speaking state when muting so animation stops
   if(micMuted){
