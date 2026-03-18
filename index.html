@@ -3084,7 +3084,7 @@ function updateCallWindow(){
     const strip=document.getElementById('cwStrip');
     if(strip) strip.innerHTML=allUsers.map(u=>{
       const isMic=u.isMe&&micMuted;const spk=u.speaking&&!isMic;
-      return `<div data-uid="${u.uid}" oncontextmenu="showUserContextMenu('${u.uid}',event.clientX,event.clientY,this)" style="width:86px;height:60px;flex-shrink:0;border:2px solid ${spk?'#23a55a':'transparent'};border-radius:8px;background:#2b2d31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer">
+      return `<div data-uid="${u.uid}" style="width:86px;height:60px;flex-shrink:0;border:2px solid ${spk?'#23a55a':'transparent'};border-radius:8px;background:#2b2d31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer">
         <div style="width:28px;height:28px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;${spk?'box-shadow:0 0 0 2px #23a55a':''}">${u.init}</div>
         <div style="font-size:10px;color:rgba(255,255,255,.75);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px;text-align:center">${esc(u.name||'?')}${isMic?' 🔇':''}</div>
       </div>`;
@@ -3101,7 +3101,7 @@ function updateCallWindow(){
     body.innerHTML=allUsers.map(u=>{
       const isMic=u.isMe&&micMuted;
       const spk=(u.isMe ? !!window._mySpeaking : u.speaking)&&!isMic;
-      return `<div class="cw-participant${spk?' spk':''}" data-uid="${u.uid}" oncontextmenu="showUserContextMenu('${u.uid}',event.clientX,event.clientY,this)" style="cursor:pointer">
+      return `<div class="cw-participant${spk?' spk':''}" data-uid="${u.uid}" style="cursor:pointer">
         <div class="cw-av" style="background:${u.color};width:${avSize}px;height:${avSize}px;font-size:${fontSize}px;${spk?'box-shadow:0 0 0 3px rgba(35,165,90,.7),0 0 16px rgba(35,165,90,.3)':''}">${u.init}</div>
         <div class="cw-name">${u.isMe?'🎙 ':''}${esc(u.name||'?')}${isMic?' 🔇':''}</div>
       </div>`;
@@ -3191,7 +3191,7 @@ function renderVCUsers(){
       const icons=(isMutedMic?'🔇':'')+(isMutedDeaf?'🔕':'');
       const role=u.role||'';
       const pingMs=u.ping?`<span style="font-size:9px;color:#72767d;margin-left:4px">${u.ping}ms</span>`:'';
-      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}" data-uid="${uid}" oncontextmenu="showUserContextMenu('${uid}',event.clientX,event.clientY,this)"><span class="vc-dot"></span><span style="color:${roleColor(role)||'inherit'}">${esc(u.name)}</span>${roleBadge(role)}${icons?`<span style="font-size:10px;opacity:.6;margin-left:3px">${icons}</span>`:''}${pingMs}</div>`;
+      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}" data-uid="${uid}"><span class="vc-dot"></span><span style="color:${roleColor(role)||'inherit'}">${esc(u.name)}</span>${roleBadge(role)}${icons?`<span style="font-size:10px;opacity:.6;margin-left:3px">${icons}</span>`:''}${pingMs}</div>`;
     }).join('');
 }
 function updateVCBar(){
@@ -3202,7 +3202,7 @@ function updateVCBar(){
   el.innerHTML=all.map(u=>{
     const isMic=u.isMe&&micMuted;
     const spk=u.speaking&&!isMic;
-    return `<div class="vbu${spk?' spk':''}" data-uid="${u.uid}" oncontextmenu="showUserContextMenu('${u.uid}',event.clientX,event.clientY,this)">
+    return `<div class="vbu${spk?' spk':''}" data-uid="${u.uid}">
       <div class="vbu-av" style="background:${u.color}">${u.init}</div>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name||'?')}</span>
       ${isMic?'<span style="font-size:10px;opacity:.7">🔇</span>':''}
@@ -4957,7 +4957,7 @@ document.addEventListener('keydown',e=>{
   }
 });
 </script>
-<script src="enhancements.js"></script>
+<!-- <script src="enhancements.js"></script> -->
 
 </body>
 </html>
