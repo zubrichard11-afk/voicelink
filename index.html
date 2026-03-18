@@ -1535,53 +1535,21 @@ function handleWS(d){
 // ══════════════════════════════════════
 // AUDIO RELAY (микрофон → сервер → все)
 // ══════════════════════════════════════
-// AudioWorklet processor code (inline blob) - Enhanced with noise suppression
+// AudioWorklet processor code (inline blob) - Minimal processing, relies on browser's built-in noiseSuppression
 const MIC_WORKLET_CODE = `
 class MicSender extends AudioWorkletProcessor {
   constructor(){ super(); this._buf=[]; this._len=0; this._chunkSize=${CHUNK_SAMPLES||2048};
-    // Noise suppression state
-    this._nsEnabled=${localStorage.getItem('vl_noise')!=='0'?'true':'false'};
-    this._nsFloor=0.0003;
-    this._nsDecay=0.9995;
-    this._nsAttack=0.15;
-    // High-pass filter state (for rumble removal)
-    this._hpf_z1=0; this._hpf_z2=0;
-    this._hpf_coef=0.95; // Cutoff ~300Hz at 48kHz
+    // High-pass filter state (gentle rumble removal only)
+    this._hpf_z1=0; this._hpf_coef=0.95; // Cutoff ~300Hz at 48kHz
   }
 
-  // High-pass filter to remove low frequency rumble (fans, AC, etc)
+  // Gentle high-pass filter - only removes very low frequency rumble
   highPass(input){
     const out=new Float32Array(input.length);
     for(let i=0;i<input.length;i++){
       const x=input[i];
       out[i]=x-this._hpf_z1;
       this._hpf_z1=this._hpf_z1*this._hpf_coef+x;
-    }
-    return out;
-  }
-
-  // Simple spectral noise suppression using Wiener-like approach
-  spectralSuppress(input, enabled){
-    if(!enabled) return input;
-    const out=new Float32Array(input.length);
-    let sum=0;
-    for(let i=0;i<input.length;i++) sum+=input[i]*input[i];
-    const power=sum/input.length;
-
-    // Update noise floor during quiet moments
-    if(power<0.001){
-      this._nsFloor=this._nsFloor*this._nsDecay+power*(1-this._nsDecay);
-    }
-
-    // Suppress noise based on signal-to-noise ratio
-    const noise=Math.max(this._nsFloor,0.0001);
-    const snr=power/noise;
-    const suppress=(snr<10)?0.3:(snr<100)?0.5:1;
-
-    // Apply soft suppression - reduces noise without artifacts
-    const gain=Math.max(0.2,Math.min(1,Math.pow(snr/50,0.3)));
-    for(let i=0;i<input.length;i++){
-      out[i]=input[i]*gain*suppress;
     }
     return out;
   }
@@ -1593,10 +1561,8 @@ class MicSender extends AudioWorkletProcessor {
     this._len+=ch.length;
     while(this._len>=this._chunkSize){
       let chunk=this._buf.splice(0,this._chunkSize);
-      // Apply high-pass filter to remove rumble
+      // Apply gentle high-pass filter to remove rumble only
       chunk=this.highPass(chunk);
-      // Apply spectral noise suppression
-      chunk=this.spectralSuppress(chunk,this._nsEnabled);
       this._len-=this._chunkSize;
       this.port.postMessage(new Float32Array(chunk),[new Float32Array(chunk).buffer]);
     }
