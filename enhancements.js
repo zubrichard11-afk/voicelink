@@ -453,57 +453,71 @@ function initVoiceLinkEnhancements() {
   console.log('[VL] Initializing enhancements...');
   
   // Загружаем сохраненные громкости
-  loadUserVolumes();
+  try { loadUserVolumes(); } catch(e) { console.warn('[VL] loadUserVolumes error:', e); }
   
-  // Периодически обновляем обработчики ПКМ
+  // Периодически проверяем состояние аудио
   setInterval(() => {
-    if (window.inVoice) {
-      attachContextMenusToVoiceUsers();
-    }
-  }, 3000);
+    try {
+      if (window.inVoice) {
+        ensureAudioContextResumed();
+      }
+    } catch(e) { console.warn('[VL] Audio check error:', e); }
+  }, 5000);
   
   console.log('[VL] Enhancements initialized!');
+}
+
+// Безопасный запуск
+function safeInit() {
+  try {
+    initVoiceLinkEnhancements();
+  } catch(e) {
+    console.error('[VL] Enhancement init error:', e);
+  }
 }
 
 // Запуск при загрузке DOM
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(initVoiceLinkEnhancements, 1500);
+    setTimeout(safeInit, 1500);
   });
 } else {
-  setTimeout(initVoiceLinkEnhancements, 1500);
+  setTimeout(safeInit, 1500);
 }
 
 // Также запускаем после успешного подключения WebSocket
-const originalConnectWS = window.connectWS;
-if (originalConnectWS) {
-  window.connectWS = function() {
-    console.log('[VL] WebSocket connecting...');
-    // Сбрасываем аудио перед переподключением
-    if (window.inVoice) {
-      console.log('[VL Audio] WS reconnecting in voice, will reset audio...');
-      // Не сбрасываем сразу - дадим переподключиться
-      setTimeout(() => {
-        ensureAudioContextResumed();
-      }, 1000);
-    }
-    originalConnectWS();
-  };
-}
+try {
+  const originalConnectWS = window.connectWS;
+  if (originalConnectWS) {
+    window.connectWS = function() {
+      console.log('[VL] WebSocket connecting...');
+      if (window.inVoice) {
+        console.log('[VL Audio] WS reconnecting in voice, will reset audio...');
+        setTimeout(() => {
+          try { ensureAudioContextResumed(); } catch(e) {}
+        }, 1000);
+      }
+      originalConnectWS();
+    };
+  }
+} catch(e) { console.warn('[VL] connectWS override error:', e); }
 
 // Перехват leaveVoice для очистки контекста
-const originalLeaveVoice = window.leaveVoice;
-if (originalLeaveVoice) {
-  window.leaveVoice = async function() {
-    await originalLeaveVoice();
-    // Очищаем peerAudio после выхода
-    if (window.peerAudio) {
-      window.peerAudio.forEach((state, uid) => {
-        if (state.gainNode) {
-          try { state.gainNode.disconnect(); } catch(e) {}
+try {
+  const originalLeaveVoice = window.leaveVoice;
+  if (originalLeaveVoice) {
+    window.leaveVoice = async function() {
+      await originalLeaveVoice();
+      try {
+        if (window.peerAudio) {
+          window.peerAudio.forEach((state, uid) => {
+            if (state.gainNode) {
+              try { state.gainNode.disconnect(); } catch(e) {}
+            }
+          });
+          window.peerAudio.clear();
         }
-      });
-      window.peerAudio.clear();
-    }
-  };
-}
+      } catch(e) {}
+    };
+  }
+} catch(e) { console.warn('[VL] leaveVoice override error:', e); }
