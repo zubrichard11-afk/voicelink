@@ -3,8 +3,38 @@ const { WebSocketServer } = require('ws');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
+
+// ── Rate limiting ──
+const rateLimits = new Map();
+const RATE_LIMIT_WINDOW = 1000; // 1 second
+const RATE_LIMIT_MAX = 30; // messages per second
+
+function checkRateLimit(uid) {
+  const now = Date.now();
+  if (!rateLimits.has(uid)) {
+    rateLimits.set(uid, { count: 0, resetAt: now + RATE_LIMIT_WINDOW });
+  }
+  const limit = rateLimits.get(uid);
+  if (now > limit.resetAt) {
+    limit.count = 0;
+    limit.resetAt = now + RATE_LIMIT_WINDOW;
+  }
+  limit.count++;
+  return limit.count <= RATE_LIMIT_MAX;
+}
+
+// ── HTML Escape Utility ──
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 const users   = new Map();
 const rooms   = new Map();
@@ -77,8 +107,8 @@ const broadcastRoom = (room, data, skip=null) => {
 const onlineList = () => {
   const o = {};
   users.forEach((u,uid) => {
-    o[uid] = { name:u.name, color:u.color, init:u.init, tag:u.tag,
-      status:u.status||'online', activity:u.activity||'',
+    o[uid] = { name:escapeHtml(u.name), color:u.color, init:escapeHtml(u.init||''), tag:escapeHtml(u.tag||''),
+      status:u.status||'online', activity:escapeHtml(u.activity||''),
       role:roles.get(uid)||'user' };
   });
   return o;
@@ -89,7 +119,7 @@ const roomList = () => {
     r[room] = {};
     uids.forEach(uid => {
       const u = users.get(uid);
-      if(u) r[room][uid] = { name:u.name, color:u.color, init:u.init,
+      if(u) r[room][uid] = { name:escapeHtml(u.name), color:u.color, init:escapeHtml(u.init||''),
         speaking:u.speaking||false, screenSharing:u.screenSharing||false,
         role:roles.get(uid)||'user', ping:u.ping||0 };
     });
@@ -147,17 +177,22 @@ wss.on('connection', ws => {
 
     if (d.type === 'join') {
       me = d.uid;
+      // Sanitize input
+      const cleanName = escapeHtml(String(d.name || 'User').slice(0, 24));
+      const cleanInit = escapeHtml(String(d.init || cleanName[0] || 'U').slice(0, 2));
+      const cleanTag = escapeHtml(String(d.tag || '').slice(0, 8));
+
       const role = firstUser===null ? 'admin' : 'user';
       if (firstUser===null) firstUser = me;
       roles.set(me, role);
-      users.set(me, { ws, name:d.name, color:d.color, init:d.init, tag:d.tag,
+      users.set(me, { ws, name:cleanName, color:d.color, init:cleanInit, tag:cleanTag,
         status:'online', activity:'', speaking:false, screenSharing:false, room:null, ping:0, sampleRate:d.sampleRate||48000 });
       stats.conns++;
       if (users.size > stats.peak) stats.peak = users.size;
       ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role }));
       dmMsgs.forEach((m,convId) => { if(convId.includes(me)) ws.send(JSON.stringify({type:'dm_history',convId,msgs:m})); });
-      broadcast({ type:'user_join', uid:me, user:{name:d.name,color:d.color,init:d.init,tag:d.tag,status:'online',activity:'',role} }, me);
-      console.log(`+ ${d.name} [${role}]`);
+      broadcast({ type:'user_join', uid:me, user:{name:cleanName,color:d.color,init:cleanInit,tag:cleanTag,status:'online',activity:'',role} }, me);
+      console.log(`+ ${cleanName} [${role}]`);
       return;
     }
     if (!me) return;
@@ -165,9 +200,16 @@ wss.on('connection', ws => {
 
     switch (d.type) {
       case 'chat': {
-        const m = { from:me, fromName:users.get(me)?.name, fromColor:users.get(me)?.color,
-          fromInit:users.get(me)?.init, fromRole:myRole, text:d.text, time:d.time, ts:Date.now() };
-        const ch = d.channel||'general';
+        // Rate limit check
+        if (!checkRateLimit(me)) {
+          ws.send(JSON.stringify({type:'error', msg:'Слишком много сообщений'}));
+          break;
+        }
+        // Sanitize text
+        const cleanText = escapeHtml(String(d.text || '').slice(0, 2000));
+        const m = { from:me, fromName:escapeHtml(users.get(me)?.name||'?'), fromColor:users.get(me)?.color,
+          fromInit:escapeHtml(users.get(me)?.init||'?'), fromRole:myRole, text:cleanText, time:d.time, ts:Date.now() };
+        const ch = String(d.channel||'general').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
         if (!msgs[ch]) msgs[ch]=[];
         msgs[ch].push(m); if(msgs[ch].length>200) msgs[ch].shift();
         stats.msgCount++;
@@ -175,9 +217,18 @@ wss.on('connection', ws => {
         break;
       }
       case 'dm': {
+        // Rate limit check
+        if (!checkRateLimit(me)) {
+          ws.send(JSON.stringify({type:'error', msg:'Слишком много сообщений'}));
+          break;
+        }
+        // Validate recipient
+        if (!d.to || !users.has(d.to)) break;
+        // Sanitize text
+        const cleanText = escapeHtml(String(d.text || '').slice(0, 2000));
         const convId=[me,d.to].sort().join('_vs_');
-        const m={from:me,fromName:users.get(me)?.name,fromColor:users.get(me)?.color,
-          fromInit:users.get(me)?.init,fromRole:myRole,text:d.text,time:d.time,ts:Date.now()};
+        const m={from:me,fromName:escapeHtml(users.get(me)?.name||'?'),fromColor:users.get(me)?.color,
+          fromInit:escapeHtml(users.get(me)?.init||'?'),fromRole:myRole,text:cleanText,time:d.time,ts:Date.now()};
         if(!dmMsgs.has(convId)) dmMsgs.set(convId,[]);
         const conv=dmMsgs.get(convId);
         conv.push(m); if(conv.length>200) conv.shift();
@@ -203,9 +254,9 @@ wss.on('connection', ws => {
         break;
       }
 
-      case 'friend_req':    send(d.to,{type:'friend_req',from:me,name:users.get(me)?.name,color:users.get(me)?.color,init:users.get(me)?.init,tag:users.get(me)?.tag}); break;
-      case 'friend_accept': send(d.to,{type:'friend_accept',from:me,name:users.get(me)?.name}); break;
-      case 'call':          send(d.to,{type:'incoming_call',from:me,name:users.get(me)?.name,color:users.get(me)?.color,init:users.get(me)?.init,video:d.video}); break;
+      case 'friend_req':    send(d.to,{type:'friend_req',from:me,name:escapeHtml(users.get(me)?.name||'?'),color:users.get(me)?.color,init:escapeHtml(users.get(me)?.init||'?'),tag:escapeHtml(users.get(me)?.tag||'')}); break;
+      case 'friend_accept': send(d.to,{type:'friend_accept',from:me,name:escapeHtml(users.get(me)?.name||'?')}); break;
+      case 'call':          send(d.to,{type:'incoming_call',from:me,name:escapeHtml(users.get(me)?.name||'?'),color:users.get(me)?.color,init:escapeHtml(users.get(me)?.init||'?'),video:d.video}); break;
       case 'call_answer':   send(d.to,{type:'call_answered',from:me}); break;
       case 'call_decline':  send(d.to,{type:'call_declined',from:me}); break;
       case 'rtc_offer':     send(d.to,{type:'rtc_offer',from:me,sdp:d.sdp,kind:d.kind||'screen'}); break;
@@ -214,7 +265,7 @@ wss.on('connection', ws => {
 
       case 'screen_start': {
         const u=users.get(me); if(u) u.screenSharing=true;
-        broadcastRoom(u?.room||'',{type:'screen_start',uid:me,name:users.get(me)?.name},me);
+        broadcastRoom(u?.room||'',{type:'screen_start',uid:me,name:escapeHtml(users.get(me)?.name||'?')},me);
         broadcast({type:'voice_update',rooms:roomList()}); break;
       }
       case 'screen_stop': {
@@ -244,9 +295,9 @@ wss.on('connection', ws => {
       case 'typing': {
         // Relay typing to target (DM or server channel)
         if(d.ctx==='dm' && d.target){
-          send(d.target, {type:'typing',uid:me,ctx:'dm',name:users.get(me)?.name});
+          send(d.target, {type:'typing',uid:me,ctx:'dm',name:escapeHtml(users.get(me)?.name||'?')});
         } else if(d.ctx==='srv'){
-          broadcast({type:'typing',uid:me,ctx:'srv',target:d.target,name:users.get(me)?.name}, me);
+          broadcast({type:'typing',uid:me,ctx:'srv',target:d.target,name:escapeHtml(users.get(me)?.name||'?')}, me);
         }
         break;
       }
@@ -255,8 +306,12 @@ wss.on('connection', ws => {
         if(u?.room) broadcastRoom(u.room,{type:'speaking',uid:me,speaking:d.speaking},me); break;
       }
       case 'status': {
-        const u=users.get(me); if(u){u.status=d.status;u.activity=d.activity||'';}
-        broadcast({type:'user_update',uid:me,status:d.status,activity:d.activity||''}); break;
+        const u=users.get(me);
+        if(u){
+          u.status=String(d.status||'online').slice(0,16);
+          u.activity=escapeHtml(String(d.activity||'').slice(0,64));
+        }
+        broadcast({type:'user_update',uid:me,status:u?.status,activity:u?.activity||''}); break;
       }
     }
   });
