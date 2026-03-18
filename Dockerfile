@@ -6,7 +6,7 @@ FROM node:20-alpine AS builder
 # Install dependencies layer (cached unless package.json changes)
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production && npm cache clean --force
+RUN npm install --production && npm cache clean --force
 
 # Production image
 FROM node:20-alpine
