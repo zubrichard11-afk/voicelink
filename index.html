@@ -1120,6 +1120,35 @@ let friends=new Set();
 let friendRequests=[];
 let sentRequests=new Set();
 let dmConvs={};
+// Save/load DM conversations to localStorage for persistence across reloads
+function saveDMConvs(){
+  try{
+    const data={};
+    for(const [uid,msgs] of Object.entries(dmConvs)){
+      // Keep last 500 messages per conversation
+      data[uid]=msgs.slice(-500);
+    }
+    localStorage.setItem('vl_dm_convs',JSON.stringify(data));
+  }catch(e){console.warn('Failed to save DM convs:',e);}
+}
+function loadDMConvs(){
+  try{
+    const raw=localStorage.getItem('vl_dm_convs');
+    if(raw){
+      const data=JSON.parse(raw);
+      dmConvs=data||{};
+      // Restore friends from saved conversations
+      Object.keys(dmConvs).forEach(uid=>friends.add(uid));
+    }
+  }catch(e){console.warn('Failed to load DM convs:',e);}
+}
+// Debounced save to avoid excessive writes
+let _dmSaveTimer=null;
+function scheduleDMSave(){
+  if(_dmSaveTimer) clearTimeout(_dmSaveTimer);
+  _dmSaveTimer=setTimeout(saveDMConvs,500);
+}
+
 let srvMsgs={general:[],gaming:[],dev:[]};
 let vcRooms={};
 let currentDMId=null;
@@ -1213,6 +1242,9 @@ function _launch(name,color,uid,tag){
   localStorage.setItem('vl_tag',ME.tag);
   // Restore friends from localStorage - prevents losing friends on reconnect
   loadFriends();
+  // Restore DM conversations from localStorage
+  loadDMConvs();
+  renderDMList(); // Render saved conversations
   connectWS();
 }
 
@@ -1456,6 +1488,7 @@ function handleWS(d){
     case 'dm':
       if(!dmConvs[d.from])dmConvs[d.from]=[];
       dmConvs[d.from].push(d.msg);
+      scheduleDMSave(); // Persist to localStorage
       if(currentDMId===d.from)appendMsg(d.msg,d.from);
       else{renderDMList();toast('💬 '+d.msg.fromName,'💬',stripHtml(d.msg.text||'').slice(0,40),'info');}
       break;
@@ -1473,7 +1506,24 @@ function handleWS(d){
     case 'incoming_call':
       showIncomingCall(d.from, d.name, d.color, d.init);
       break;
-    case 'call_declined': stopRingTone(); toast('Звонок','📵',getUser(d.from).name+' отклонил','error');break;
+    case 'call_declined':
+      stopRingTone();
+      toast('Звонок','📵',getUser(d.from).name+' отклонил','error');
+      if(window._outgoingCallTo){window._outgoingCallTo=null;if(inVoice) leaveVoice();}
+      break;
+    case 'call_failed':
+      stopRingTone();
+      if(d.reason==='target_in_voice'){
+        toast('Звонок','⚠️',d.name+' уже в голосовом канале','error');
+      } else {
+        toast('Звонок','❌','Не удалось дозвониться','error');
+      }
+      // Leave the DM voice room if we were trying to call
+      if(window._outgoingCallTo){
+        window._outgoingCallTo=null;
+        if(inVoice) leaveVoice();
+      }
+      break;
     case 'ping_update':
       // Update peer's ping for adaptive jitter buffer
       if(peerAudio.has(d.uid)) peerAudio.get(d.uid).pingMs=d.ping||30;
@@ -1535,24 +1585,10 @@ function handleWS(d){
 // ══════════════════════════════════════
 // AUDIO RELAY (микрофон → сервер → все)
 // ══════════════════════════════════════
-// AudioWorklet processor code (inline blob) - Minimal processing, relies on browser's built-in noiseSuppression
+// AudioWorklet processor - passes audio chunks to server (filtering done via BiquadFilterNode)
 const MIC_WORKLET_CODE = `
 class MicSender extends AudioWorkletProcessor {
-  constructor(){ super(); this._buf=[]; this._len=0; this._chunkSize=${CHUNK_SAMPLES||2048};
-    // High-pass filter state (gentle rumble removal only)
-    this._hpf_z1=0; this._hpf_coef=0.95; // Cutoff ~300Hz at 48kHz
-  }
-
-  // Gentle high-pass filter - only removes very low frequency rumble
-  highPass(input){
-    const out=new Float32Array(input.length);
-    for(let i=0;i<input.length;i++){
-      const x=input[i];
-      out[i]=x-this._hpf_z1;
-      this._hpf_z1=this._hpf_z1*this._hpf_coef+x;
-    }
-    return out;
-  }
+  constructor(){ super(); this._buf=[]; this._len=0; this._chunkSize=${CHUNK_SAMPLES||2048}; }
 
   process(inputs){
     const ch=inputs[0]&&inputs[0][0];
@@ -1560,9 +1596,7 @@ class MicSender extends AudioWorkletProcessor {
     for(let i=0;i<ch.length;i++) this._buf.push(ch[i]);
     this._len+=ch.length;
     while(this._len>=this._chunkSize){
-      let chunk=this._buf.splice(0,this._chunkSize);
-      // Apply gentle high-pass filter to remove rumble only
-      chunk=this.highPass(chunk);
+      const chunk=this._buf.splice(0,this._chunkSize);
       this._len-=this._chunkSize;
       this.port.postMessage(new Float32Array(chunk),[new Float32Array(chunk).buffer]);
     }
@@ -1607,9 +1641,18 @@ async function startMicRelay(){
   const micGainNode=audioCtx.createGain();
   micGainNode.gain.value=micGainValue;
   window._micGainNode=micGainNode;
+
+  // Add proper high-pass filter to cut bass (80Hz cutoff)
+  const micHPF=audioCtx.createBiquadFilter();
+  micHPF.type='highpass';
+  micHPF.frequency.value=80; // Cut frequencies below 80Hz (rumble, bass)
+  micHPF.Q.value=0.7;
+  window._micHPF=micHPF;
+
   src.connect(micGainNode);
+  micGainNode.connect(micHPF);
   micProcessor=new AudioWorkletNode(audioCtx,'mic-sender');
-  micGainNode.connect(micProcessor);
+  micHPF.connect(micProcessor);
 
   // ── Aggressive Noise Gate state ──
   let _ngSmooth=0;       // smoothed RMS for speaking indicator
@@ -2013,6 +2056,7 @@ window.sendFile=function(input, ctx, target){
     if(ctx==='dm'){
       if(!dmConvs[target])dmConvs[target]=[];
       dmConvs[target].push(msg);
+      scheduleDMSave();
       appendMsg(msg,target);
       wsSend({type:'dm',to:target,text:msgText,time});
     } else {
@@ -2069,7 +2113,7 @@ function startVoiceMsg(ctx, target){
         const time=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
         const msg={from:myUid,fromName:ME.name,fromColor:ME.color,fromInit:ME.init,fromRole:myRole,text:msgText,time,ts:Date.now()};
         const {ctx:c,target:t}=voiceCtx;
-        if(c==='dm'){if(!dmConvs[t])dmConvs[t]=[];dmConvs[t].push(msg);appendMsg(msg,t);wsSend({type:'dm',to:t,text:msgText,time});}
+        if(c==='dm'){if(!dmConvs[t])dmConvs[t]=[];dmConvs[t].push(msg);scheduleDMSave();appendMsg(msg,t);wsSend({type:'dm',to:t,text:msgText,time});}
         else{if(!srvMsgs[t])srvMsgs[t]=[];srvMsgs[t].push(msg);appendMsg(msg,t);wsSend({type:'chat',channel:t,text:msgText,time});}
       };
       reader.readAsDataURL(blob);
@@ -2120,7 +2164,7 @@ window.sendDM=function(uid){
   const msg={from:myUid,fromName:ME.name,fromColor:ME.color,fromInit:ME.init,text,cmd,time:tNow(),ts:Date.now()};
   if(_replyData){msg.replyTo=_replyData;cancelReply();}
   if(!dmConvs[uid])dmConvs[uid]=[];
-  dmConvs[uid].push(msg);appendMsg(msg,uid);
+  dmConvs[uid].push(msg);scheduleDMSave();appendMsg(msg,uid);
   wsSend({type:'dm',to:uid,text,time:msg.time});
 };
 
@@ -2478,6 +2522,8 @@ window.joinVoice=function(room, peerId){
   inVoice=true;currentVoiceRoom=room;
   window._voicePeerId=peerId||null;
   const isDM=room.startsWith('dm:');
+  // Track call start time for DM calls
+  if(isDM) window._callStartTime=Date.now();
   const peerName=peerId?getUser(peerId).name:'';
   const displayName=isDM?('📞 '+peerName):('🔊 '+room);
   document.getElementById('vbar').classList.add('vis');
@@ -2996,7 +3042,13 @@ function updateCallWindow(){
 }
 window.leaveVoice=async function(){
   if(!inVoice)return;
+  const prevRoom=currentVoiceRoom;
+  const peerId=window._voicePeerId;
+  const callStart=window._callStartTime;
   inVoice=false;
+  currentVoiceRoom=null;
+  window._voicePeerId=null;
+  window._callStartTime=null;
   wsSend({type:'leave_voice'});
   stopRingTone();
   playSound('disconnect');
@@ -3016,6 +3068,24 @@ window.leaveVoice=async function(){
     }
   }
   stopScreenShare();
+
+  // Show call duration in DM chat (like Discord)
+  if(prevRoom&&prevRoom.startsWith('dm:')&&peerId&&callStart){
+    const duration=Date.now()-callStart;
+    const mins=Math.floor(duration/60000);
+    const secs=Math.floor((duration%60000)/1000);
+    let durText;
+    if(mins<1) durText='менее минуты';
+    else if(mins===1 && secs<30) durText='1 мин.';
+    else if(mins<60) durText=mins+' мин.';
+    else{const h=Math.floor(mins/60);const m=mins%60;durText=h+'ч '+m+'м';}
+
+    const callMsg={type:'system',text:'Звонок длился '+durText,time:tNow(),ts:Date.now()};
+    if(!dmConvs[peerId])dmConvs[peerId]=[];
+    dmConvs[peerId].push(callMsg);scheduleDMSave();
+    if(currentDMId===peerId)appendMsg(callMsg,peerId);
+  }
+
   toast('Голосовой','👋','Вы вышли','info');
 };
 

@@ -256,7 +256,17 @@ wss.on('connection', ws => {
 
       case 'friend_req':    send(d.to,{type:'friend_req',from:me,name:escapeHtml(users.get(me)?.name||'?'),color:users.get(me)?.color,init:escapeHtml(users.get(me)?.init||'?'),tag:escapeHtml(users.get(me)?.tag||'')}); break;
       case 'friend_accept': send(d.to,{type:'friend_accept',from:me,name:escapeHtml(users.get(me)?.name||'?')}); break;
-      case 'call':          send(d.to,{type:'incoming_call',from:me,name:escapeHtml(users.get(me)?.name||'?'),color:users.get(me)?.color,init:escapeHtml(users.get(me)?.init||'?'),video:d.video}); break;
+      case 'call': {
+        // Check if target is already in a voice channel
+        const targetUser = users.get(d.to);
+        if (targetUser?.room) {
+          // Target is in voice - send error to caller
+          send(me, {type:'call_failed', reason:'target_in_voice', name:escapeHtml(targetUser?.name||'?')});
+        } else {
+          send(d.to,{type:'incoming_call',from:me,name:escapeHtml(users.get(me)?.name||'?'),color:users.get(me)?.color,init:escapeHtml(users.get(me)?.init||'?'),video:d.video});
+        }
+        break;
+      }
       case 'call_answer':   send(d.to,{type:'call_answered',from:me}); break;
       case 'call_decline':  send(d.to,{type:'call_declined',from:me}); break;
       case 'rtc_offer':     send(d.to,{type:'rtc_offer',from:me,sdp:d.sdp,kind:d.kind||'screen'}); break;
