@@ -1211,6 +1211,8 @@ function _launch(name,color,uid,tag){
   localStorage.setItem('vl_color',color);
   localStorage.setItem('vl_uid',myUid);
   localStorage.setItem('vl_tag',ME.tag);
+  // Restore friends from localStorage - prevents losing friends on reconnect
+  loadFriends();
   connectWS();
 }
 
@@ -1324,7 +1326,24 @@ window.startApp=window.doLogin;
 
 // ══════════════════════════════════════
 // WEBSOCKET
+// ══════════════════════════════////////
+// Friends persistence helpers
+function saveFriends(){
+  try{localStorage.setItem('vl_friends',JSON.stringify([...friends]));}catch(e){}
+}
+function loadFriends(){
+  try{
+    const f=JSON.parse(localStorage.getItem('vl_friends')||'[]');
+    friends=new Set(f);
+  }catch(e){friends=new Set();}
+}
 // ══════════════════════════════════════
+// WEBSOCKET
+// ══════════════════════════════════════
+let wsPingInterval=null;
+let wsReconnectAttempts=0;
+const WS_MAX_RECONNECT_DELAY=30000;
+
 function connectWS(){
   const proto=location.protocol==='https:'?'wss:':'ws:';
   // Use Render server by default (Frankfurt, lower latency)
@@ -1334,12 +1353,16 @@ function connectWS(){
   ws=new WebSocket(wsUrl);
   ws.binaryType='arraybuffer';
   showStatus('Подключаемся...','connecting');
+  wsReconnectAttempts++;
 
   ws.onopen=()=>{
+    wsReconnectAttempts=0;
     ws.send(JSON.stringify({type:'join',uid:myUid,name:ME.name,color:ME.color,init:ME.init,tag:ME.tag,sampleRate:SAMPLE_RATE}));
     showStatus('Подключено ✓','connected');
     setTimeout(hideStatus,2000);
     setWsDot('green');
+    // Start ping keepalive - prevents Railway/proxy from closing idle connections
+    startWsPing();
     launchApp();
   };
 
@@ -1353,6 +1376,16 @@ function connectWS(){
         try{
           const hdr=JSON.parse(new TextDecoder().decode(bytes.slice(0,nl)));
           if(hdr.type==='screen_frame'){ handleScreenFrame(hdr,e.data.slice(nl+1)); return; }
+          // Handle pong response
+          if(hdr.type==='pong'){
+            const latency=Date.now()-window._lastPingTime;
+            window._myPing=latency;
+            const el=document.getElementById('vbarPing');
+            if(el)el.textContent=latency+'ms';
+            const el2=document.getElementById('myPingVal');
+            if(el2)el2.textContent=latency+'ms';
+            return;
+          }
         }catch(e){}
       }
       handleAudioChunk(e.data);
@@ -1362,11 +1395,29 @@ function connectWS(){
   };
 
   ws.onclose=()=>{
+    stopWsPing();
     setWsDot('red');
     showStatus('Соединение потеряно. Переподключаемся...','error');
-    setTimeout(connectWS,3000);
+    // Exponential backoff: 3s, 6s, 12s, 24s, max 30s
+    const delay=Math.min(3000*Math.pow(2,wsReconnectAttempts-1),WS_MAX_RECONNECT_DELAY);
+    setTimeout(connectWS,delay);
   };
   ws.onerror=()=>{};
+}
+
+// WebSocket ping keepalive - prevents idle connection drops from Railway/proxies
+function startWsPing(){
+  stopWsPing();
+  // Send ping every 25 seconds - Railway/proxies typically timeout at 30-60s
+  wsPingInterval=setInterval(()=>{
+    if(ws&&ws.readyState===1){
+      window._lastPingTime=Date.now();
+      ws.send(JSON.stringify({type:'ping',time:window._lastPingTime}));
+    }
+  },25000);
+}
+function stopWsPing(){
+  if(wsPingInterval){clearInterval(wsPingInterval);wsPingInterval=null;}
 }
 
 function wsSend(data){if(ws&&ws.readyState===1) ws.send(typeof data==='string'?data:JSON.stringify(data));}
@@ -1418,7 +1469,7 @@ function handleWS(d){
         friendRequests.push({uid:d.from,name:d.name,color:d.color,init:d.init,tag:d.tag});
         updateReqBadge();toast('Запрос в друзья','👥',d.name+' хочет добавить вас!','info');
       }break;
-    case 'friend_accept': friends.add(d.from);toast('Друг добавлен','🎉',d.name+' принял запрос!','success');renderDMList();break;
+    case 'friend_accept': friends.add(d.from);saveFriends();toast('Друг добавлен','🎉',d.name+' принял запрос!','success');renderDMList();break;
     case 'incoming_call':
       showIncomingCall(d.from, d.name, d.color, d.init);
       break;
@@ -1484,17 +1535,68 @@ function handleWS(d){
 // ══════════════════════════════════════
 // AUDIO RELAY (микрофон → сервер → все)
 // ══════════════════════════════════════
-// AudioWorklet processor code (inline blob)
+// AudioWorklet processor code (inline blob) - Enhanced with noise suppression
 const MIC_WORKLET_CODE = `
 class MicSender extends AudioWorkletProcessor {
-  constructor(){ super(); this._buf=[]; this._len=0; this._chunkSize=${CHUNK_SAMPLES||2048}; }
+  constructor(){ super(); this._buf=[]; this._len=0; this._chunkSize=${CHUNK_SAMPLES||2048};
+    // Noise suppression state
+    this._nsEnabled=${localStorage.getItem('vl_noise')!=='0'?'true':'false'};
+    this._nsFloor=0.0003;
+    this._nsDecay=0.9995;
+    this._nsAttack=0.15;
+    // High-pass filter state (for rumble removal)
+    this._hpf_z1=0; this._hpf_z2=0;
+    this._hpf_coef=0.95; // Cutoff ~300Hz at 48kHz
+  }
+
+  // High-pass filter to remove low frequency rumble (fans, AC, etc)
+  highPass(input){
+    const out=new Float32Array(input.length);
+    for(let i=0;i<input.length;i++){
+      const x=input[i];
+      out[i]=x-this._hpf_z1;
+      this._hpf_z1=this._hpf_z1*this._hpf_coef+x;
+    }
+    return out;
+  }
+
+  // Simple spectral noise suppression using Wiener-like approach
+  spectralSuppress(input, enabled){
+    if(!enabled) return input;
+    const out=new Float32Array(input.length);
+    let sum=0;
+    for(let i=0;i<input.length;i++) sum+=input[i]*input[i];
+    const power=sum/input.length;
+
+    // Update noise floor during quiet moments
+    if(power<0.001){
+      this._nsFloor=this._nsFloor*this._nsDecay+power*(1-this._nsDecay);
+    }
+
+    // Suppress noise based on signal-to-noise ratio
+    const noise=Math.max(this._nsFloor,0.0001);
+    const snr=power/noise;
+    const suppress=(snr<10)?0.3:(snr<100)?0.5:1;
+
+    // Apply soft suppression - reduces noise without artifacts
+    const gain=Math.max(0.2,Math.min(1,Math.pow(snr/50,0.3)));
+    for(let i=0;i<input.length;i++){
+      out[i]=input[i]*gain*suppress;
+    }
+    return out;
+  }
+
   process(inputs){
     const ch=inputs[0]&&inputs[0][0];
     if(!ch) return true;
     for(let i=0;i<ch.length;i++) this._buf.push(ch[i]);
     this._len+=ch.length;
     while(this._len>=this._chunkSize){
-      const chunk=this._buf.splice(0,this._chunkSize);
+      let chunk=this._buf.splice(0,this._chunkSize);
+      // Apply high-pass filter to remove rumble
+      chunk=this.highPass(chunk);
+      // Apply spectral noise suppression
+      chunk=this.spectralSuppress(chunk,this._nsEnabled);
       this._len-=this._chunkSize;
       this.port.postMessage(new Float32Array(chunk),[new Float32Array(chunk).buffer]);
     }
@@ -3229,6 +3331,7 @@ window.openPP=function(uid,anchor){
 };
 window.closePP=()=>{document.getElementById('pp').classList.remove('vis');document.getElementById('ppBd').style.display='none';ppTarget=null;};
 window.ppDM=()=>{if(!ppTarget)return;const id=ppTarget;closePP();if(!dmConvs[id])dmConvs[id]=[];openDM(id);};
+window.removeFriend=function(uid){friends.delete(uid);saveFriends();renderDMList();toast('Друг','👥','Удалён','info');};
 window.ppFriend=()=>{if(!ppTarget)return;if(friends.has(ppTarget)){removeFriend(ppTarget);closePP();return;}doFReq(getUser(ppTarget).name);sentRequests.add(ppTarget);document.getElementById('ppFriendBtn').textContent='✉ Отправлен';};
 
 // ══════════════════════════════════════

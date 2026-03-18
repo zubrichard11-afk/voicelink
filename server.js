@@ -313,6 +313,11 @@ wss.on('connection', ws => {
         }
         broadcast({type:'user_update',uid:me,status:u?.status,activity:u?.activity||''}); break;
       }
+      case 'ping': {
+        // Client-side keepalive ping - respond with pong
+        ws.send(JSON.stringify({type:'pong',time:d.time}));
+        break;
+      }
     }
   });
 
