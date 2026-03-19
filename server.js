@@ -41,6 +41,7 @@ const rooms   = new Map();
 const msgs    = { general:[], gaming:[], dev:[] };
 const dmMsgs  = new Map();
 const roomZones = new Map();
+const roomConfigs = new Map();
 const screenWatchers = new Map();
 
 // ── Roles: first user to join becomes Admin ──
@@ -110,7 +111,7 @@ const onlineList = () => {
   const o = {};
   users.forEach((u,uid) => {
     o[uid] = { name:escapeHtml(u.name), color:u.color, init:escapeHtml(u.init||''), tag:escapeHtml(u.tag||''),
-      status:u.status||'online', activity:escapeHtml(u.activity||''), avatar:escapeHtml(u.avatar||''), banner:escapeHtml(u.banner||''), about:escapeHtml(u.about||''),
+      status:u.status||'online', activity:escapeHtml(u.activity||''), avatar:escapeHtml(u.avatar||''), banner:escapeHtml(u.banner||''), about:escapeHtml(u.about||''), badge:escapeHtml(u.badge||''), nickColor:escapeHtml(u.nickColor||''),
       role:roles.get(uid)||'user' };
   });
   return o;
@@ -122,7 +123,7 @@ const roomList = () => {
     uids.forEach(uid => {
       const u = users.get(uid);
       if(u) r[room][uid] = { name:escapeHtml(u.name), color:u.color, init:escapeHtml(u.init||''),
-        speaking:u.speaking||false, screenSharing:u.screenSharing||false,
+        speaking:u.speaking||false, screenSharing:u.screenSharing||false, avatar:escapeHtml(u.avatar||''), badge:escapeHtml(u.badge||''), nickColor:escapeHtml(u.nickColor||''),
         role:roles.get(uid)||'user', ping:u.ping||0 };
     });
   });
@@ -133,6 +134,13 @@ const roomZoneList = () => {
   const z = {};
   roomZones.forEach((zone, room) => { z[room] = zone; });
   return z;
+};
+const roomConfigList = () => {
+  const cfg = {};
+  roomConfigs.forEach((meta, room) => {
+    cfg[room] = { limit: meta?.limit || 0, hasPassword: !!(meta?.password) };
+  });
+  return cfg;
 };
 const watchersPayload = (uid) => ({
   type: 'screen_watchers',
@@ -222,12 +230,12 @@ wss.on('connection', ws => {
       if (firstUser===null) firstUser = me;
       roles.set(me, role);
       users.set(me, { ws, name:cleanName, color:d.color, init:cleanInit, tag:cleanTag,
-        status:'online', activity:'', avatar: escapeHtml(String(d.avatar||'').slice(0,4)), banner: escapeHtml(String(d.banner||'').slice(0,24)), about: escapeHtml(String(d.about||'').slice(0,180)), speaking:false, screenSharing:false, room:null, ping:0, sampleRate:d.sampleRate||48000 });
+        status:'online', activity:'', avatar: escapeHtml(String(d.avatar||'').slice(0,4)), banner: escapeHtml(String(d.banner||'').slice(0,24)), about: escapeHtml(String(d.about||'').slice(0,180)), badge: escapeHtml(String(d.badge||'').slice(0,16)), nickColor: escapeHtml(String(d.nickColor||'').slice(0,16)), speaking:false, screenSharing:false, room:null, ping:0, sampleRate:d.sampleRate||48000 });
       stats.conns++;
       if (users.size > stats.peak) stats.peak = users.size;
-      ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role, roomZones:roomZoneList() }));
+      ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role, roomZones:roomZoneList(), roomConfigs: roomConfigList() }));
       dmMsgs.forEach((m,convId) => { if(convId.includes(me)) ws.send(JSON.stringify({type:'dm_history',convId,msgs:m})); });
-      broadcast({ type:'user_join', uid:me, user:{name:cleanName,color:d.color,init:cleanInit,tag:cleanTag,status:'online',activity:'',avatar:escapeHtml(String(d.avatar||'').slice(0,4)),banner:escapeHtml(String(d.banner||'').slice(0,24)),about:escapeHtml(String(d.about||'').slice(0,180)),role} }, me);
+      broadcast({ type:'user_join', uid:me, user:{name:cleanName,color:d.color,init:cleanInit,tag:cleanTag,status:'online',activity:'',avatar:escapeHtml(String(d.avatar||'').slice(0,4)),banner:escapeHtml(String(d.banner||'').slice(0,24)),about:escapeHtml(String(d.about||'').slice(0,180)),badge:escapeHtml(String(d.badge||'').slice(0,16)),nickColor:escapeHtml(String(d.nickColor||'').slice(0,16)),role} }, me);
       console.log(`+ ${cleanName} [${role}]`);
       return;
     }
@@ -244,7 +252,7 @@ wss.on('connection', ws => {
         // Sanitize text
         const cleanText = escapeHtml(String(d.text || '').slice(0, 2000));
         const m = { from:me, fromName:escapeHtml(users.get(me)?.name||'?'), fromColor:users.get(me)?.color,
-          fromInit:escapeHtml(users.get(me)?.init||'?'), fromRole:myRole, text:cleanText, time:d.time, ts:Date.now() };
+          fromInit:escapeHtml(users.get(me)?.init||'?'), fromRole:myRole, text:cleanText, time:d.time, ts:d.ts||Date.now() };
         const ch = String(d.channel||'general').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
         if (!msgs[ch]) msgs[ch]=[];
         msgs[ch].push(m); if(msgs[ch].length>200) msgs[ch].shift();
@@ -264,7 +272,7 @@ wss.on('connection', ws => {
         const cleanText = escapeHtml(String(d.text || '').slice(0, 2000));
         const convId=[me,d.to].sort().join('_vs_');
         const m={from:me,fromName:escapeHtml(users.get(me)?.name||'?'),fromColor:users.get(me)?.color,
-          fromInit:escapeHtml(users.get(me)?.init||'?'),fromRole:myRole,text:cleanText,time:d.time,ts:Date.now()};
+          fromInit:escapeHtml(users.get(me)?.init||'?'),fromRole:myRole,text:cleanText,time:d.time,ts:d.ts||Date.now()};
         if(!dmMsgs.has(convId)) dmMsgs.set(convId,[]);
         const conv=dmMsgs.get(convId);
         conv.push(m); if(conv.length>200) conv.shift();
@@ -324,13 +332,24 @@ wss.on('connection', ws => {
       }
       case 'join_voice': {
         const u=users.get(me);
+        const roomName = String(d.room || '').slice(0, 64);
+        const cfg = roomConfigs.get(roomName) || { limit:0, password:'' };
+        const existing = rooms.get(roomName);
+        if (cfg.password && String(d.pass || '') !== String(cfg.password)) {
+          send(me, {type:'room_join_error', room: roomName, reason:'wrong_password'});
+          break;
+        }
+        if (cfg.limit && existing && !existing.has(me) && existing.size >= cfg.limit) {
+          send(me, {type:'room_join_error', room: roomName, reason:'room_full', limit: cfg.limit});
+          break;
+        }
         if(u?.room){const prev=rooms.get(u.room);if(prev){prev.delete(me);if(!prev.size)rooms.delete(u.room);}}
-        if(!rooms.has(d.room)) rooms.set(d.room,new Set());
-        rooms.get(d.room).add(me); u.room=d.room;
+        if(!rooms.has(roomName)) rooms.set(roomName,new Set());
+        rooms.get(roomName).add(me); u.room=roomName;
         broadcast({type:'voice_update',rooms:roomList()});
-        broadcastRoom(d.room,{type:'peer_joined',uid:me,name:u.name,color:u.color,init:u.init,role:myRole},me);
-        ws.send(JSON.stringify({type:'voice_joined',room:d.room,
-          peers:[...rooms.get(d.room)].filter(x=>x!==me).map(uid=>{
+        broadcastRoom(roomName,{type:'peer_joined',uid:me,name:u.name,color:u.color,init:u.init,role:myRole},me);
+        ws.send(JSON.stringify({type:'voice_joined',room:roomName,
+          peers:[...rooms.get(roomName)].filter(x=>x!==me).map(uid=>{
             const u=users.get(uid);
             return{uid,name:u?.name,color:u?.color,init:u?.init,screenSharing:u?.screenSharing||false,role:roles.get(uid)||'user',ping:u?.ping||0};
           })}));
@@ -357,6 +376,55 @@ wss.on('connection', ws => {
         if(u?.room) broadcastRoom(u.room,{type:'speaking',uid:me,speaking:d.speaking},me); break;
       }
 
+
+      case 'edit_msg': {
+        const ts = Number(d.ts);
+        const newText = escapeHtml(String(d.text || '').slice(0, 2000));
+        if (!ts || !newText) break;
+        if (d.scope === 'dm' && d.to) {
+          const convId = [me, d.to].sort().join('_vs_');
+          const conv = dmMsgs.get(convId) || [];
+          const item = conv.find(x => Number(x.ts)===ts && x.from===me);
+          if (!item) break;
+          item.text = newText;
+          item.edited = true;
+          send(d.to, {type:'msg_edited', scope:'dm', uid:me, target:d.to, ts, text:newText});
+          send(me, {type:'msg_edited', scope:'dm', uid:me, target:d.to, ts, text:newText});
+        } else if (d.scope === 'srv' && d.channel) {
+          const ch = String(d.channel||'').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+          const arr = msgs[ch] || [];
+          const item = arr.find(x => Number(x.ts)===ts && x.from===me);
+          if (!item) break;
+          item.text = newText;
+          item.edited = true;
+          broadcast({type:'msg_edited', scope:'srv', channel:ch, uid:me, ts, text:newText});
+        }
+        break;
+      }
+      case 'delete_msg': {
+        const ts = Number(d.ts);
+        if (!ts) break;
+        if (d.scope === 'dm' && d.to) {
+          const convId = [me, d.to].sort().join('_vs_');
+          const conv = dmMsgs.get(convId) || [];
+          const item = conv.find(x => Number(x.ts)===ts && x.from===me);
+          if (!item) break;
+          item.deleted = true;
+          item.text = 'Сообщение удалено';
+          send(d.to, {type:'msg_deleted', scope:'dm', uid:me, target:d.to, ts});
+          send(me, {type:'msg_deleted', scope:'dm', uid:me, target:d.to, ts});
+        } else if (d.scope === 'srv' && d.channel) {
+          const ch = String(d.channel||'').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+          const arr = msgs[ch] || [];
+          const item = arr.find(x => Number(x.ts)===ts && x.from===me);
+          if (!item) break;
+          item.deleted = true;
+          item.text = 'Сообщение удалено';
+          broadcast({type:'msg_deleted', scope:'srv', channel:ch, uid:me, ts});
+        }
+        break;
+      }
+
       case 'profile_update': {
         const u = users.get(me);
         if (u) {
@@ -367,10 +435,12 @@ wss.on('connection', ws => {
           u.avatar = escapeHtml(String(d.avatar || '').slice(0, 4));
           u.banner = escapeHtml(String(d.banner || '').slice(0, 24));
           u.about = escapeHtml(String(d.about || '').slice(0, 180));
+          u.badge = escapeHtml(String(d.badge || '').slice(0, 16));
+          u.nickColor = escapeHtml(String(d.nickColor || '').slice(0, 16));
         }
         broadcast({type:'profile_update', uid:me, user:{
           name:u?.name||'', color:u?.color||'', init:u?.init||'', tag:u?.tag||'', status:u?.status||'online',
-          activity:u?.activity||'', avatar:u?.avatar||'', banner:u?.banner||'', about:u?.about||'', role:roles.get(me)||'user'
+          activity:u?.activity||'', avatar:u?.avatar||'', banner:u?.banner||'', about:u?.about||'', badge:u?.badge||'', nickColor:u?.nickColor||'', role:roles.get(me)||'user'
         }}, me);
         break;
       }
@@ -393,6 +463,16 @@ wss.on('connection', ws => {
         send(targetUid, {type:'voice_moved', room:newRoom, by: users.get(me)?.name || 'Модератор'});
         broadcastRoom(newRoom, {type:'peer_joined', uid:targetUid, name:tu.name, color:tu.color, init:tu.init, role:roles.get(targetUid)||'user'}, targetUid);
         broadcast({type:'voice_update', rooms:roomList()});
+        break;
+      }
+      case 'set_room_prefs': {
+        if (myRole!=='admin' && myRole!=='mod') break;
+        const room = String(d.room || '').slice(0, 64);
+        if (!room) break;
+        const limit = Math.max(0, Math.min(99, parseInt(d.limit, 10) || 0));
+        const password = String(d.password || '').slice(0, 64);
+        roomConfigs.set(room, { limit, password });
+        broadcast({type:'room_prefs_update', room, prefs:{ limit, hasPassword: !!password }});
         break;
       }
       case 'set_room_zone': {
