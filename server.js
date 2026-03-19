@@ -40,6 +40,8 @@ const users   = new Map();
 const rooms   = new Map();
 const msgs    = { general:[], gaming:[], dev:[] };
 const dmMsgs  = new Map();
+const roomZones = new Map();
+const screenWatchers = new Map();
 
 // ── Roles: first user to join becomes Admin ──
 const roles = new Map(); // uid -> 'admin'|'mod'|'user'
@@ -108,7 +110,7 @@ const onlineList = () => {
   const o = {};
   users.forEach((u,uid) => {
     o[uid] = { name:escapeHtml(u.name), color:u.color, init:escapeHtml(u.init||''), tag:escapeHtml(u.tag||''),
-      status:u.status||'online', activity:escapeHtml(u.activity||''),
+      status:u.status||'online', activity:escapeHtml(u.activity||''), avatar:escapeHtml(u.avatar||''), banner:escapeHtml(u.banner||''), about:escapeHtml(u.about||''),
       role:roles.get(uid)||'user' };
   });
   return o;
@@ -126,6 +128,40 @@ const roomList = () => {
   });
   return r;
 };
+
+const roomZoneList = () => {
+  const z = {};
+  roomZones.forEach((zone, room) => { z[room] = zone; });
+  return z;
+};
+const watchersPayload = (uid) => ({
+  type: 'screen_watchers',
+  uid,
+  count: screenWatchers.get(uid)?.size || 0,
+  viewers: [...(screenWatchers.get(uid) || [])]
+});
+function broadcastScreenWatchers(uid, room='') {
+  const payload = watchersPayload(uid);
+  if (room) broadcastRoom(room, payload);
+  else broadcast(payload);
+}
+function clearStreamerWatchers(uid) {
+  if (screenWatchers.has(uid)) {
+    const u = users.get(uid);
+    screenWatchers.delete(uid);
+    broadcastScreenWatchers(uid, u?.room || '');
+  }
+}
+function removeViewerFromAll(uid) {
+  screenWatchers.forEach((set, streamerUid) => {
+    if (set.delete(uid)) {
+      const su = users.get(streamerUid);
+      broadcastScreenWatchers(streamerUid, su?.room || '');
+    }
+    if (!set.size) screenWatchers.delete(streamerUid);
+  });
+}
+
 
 wss.on('connection', ws => {
   let me = null;
@@ -186,12 +222,12 @@ wss.on('connection', ws => {
       if (firstUser===null) firstUser = me;
       roles.set(me, role);
       users.set(me, { ws, name:cleanName, color:d.color, init:cleanInit, tag:cleanTag,
-        status:'online', activity:'', speaking:false, screenSharing:false, room:null, ping:0, sampleRate:d.sampleRate||48000 });
+        status:'online', activity:'', avatar: escapeHtml(String(d.avatar||'').slice(0,4)), banner: escapeHtml(String(d.banner||'').slice(0,24)), about: escapeHtml(String(d.about||'').slice(0,180)), speaking:false, screenSharing:false, room:null, ping:0, sampleRate:d.sampleRate||48000 });
       stats.conns++;
       if (users.size > stats.peak) stats.peak = users.size;
-      ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role }));
+      ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role, roomZones:roomZoneList() }));
       dmMsgs.forEach((m,convId) => { if(convId.includes(me)) ws.send(JSON.stringify({type:'dm_history',convId,msgs:m})); });
-      broadcast({ type:'user_join', uid:me, user:{name:cleanName,color:d.color,init:cleanInit,tag:cleanTag,status:'online',activity:'',role} }, me);
+      broadcast({ type:'user_join', uid:me, user:{name:cleanName,color:d.color,init:cleanInit,tag:cleanTag,status:'online',activity:'',avatar:escapeHtml(String(d.avatar||'').slice(0,4)),banner:escapeHtml(String(d.banner||'').slice(0,24)),about:escapeHtml(String(d.about||'').slice(0,180)),role} }, me);
       console.log(`+ ${cleanName} [${role}]`);
       return;
     }
@@ -275,11 +311,14 @@ wss.on('connection', ws => {
 
       case 'screen_start': {
         const u=users.get(me); if(u) u.screenSharing=true;
+        clearStreamerWatchers(me);
         broadcastRoom(u?.room||'',{type:'screen_start',uid:me,name:escapeHtml(users.get(me)?.name||'?')},me);
+        broadcastScreenWatchers(me, u?.room||'');
         broadcast({type:'voice_update',rooms:roomList()}); break;
       }
       case 'screen_stop': {
         const u=users.get(me); if(u) u.screenSharing=false;
+        clearStreamerWatchers(me);
         broadcastRoom(u?.room||'',{type:'screen_stop',uid:me},me);
         broadcast({type:'voice_update',rooms:roomList()}); break;
       }
@@ -299,6 +338,8 @@ wss.on('connection', ws => {
       }
       case 'leave_voice': {
         const u=users.get(me); if(u) u.screenSharing=false;
+        clearStreamerWatchers(me);
+        removeViewerFromAll(me);
         if(u?.room){const r=rooms.get(u.room);if(r){r.delete(me);if(!r.size)rooms.delete(u.room);}broadcastRoom(u.room,{type:'peer_left',uid:me});u.room=null;}
         broadcast({type:'voice_update',rooms:roomList()}); break;
       }
@@ -314,6 +355,75 @@ wss.on('connection', ws => {
       case 'speaking': {
         const u=users.get(me); if(u) u.speaking=d.speaking;
         if(u?.room) broadcastRoom(u.room,{type:'speaking',uid:me,speaking:d.speaking},me); break;
+      }
+
+      case 'profile_update': {
+        const u = users.get(me);
+        if (u) {
+          if (typeof d.name === 'string' && d.name.trim()) u.name = escapeHtml(String(d.name).slice(0, 24));
+          if (typeof d.color === 'string') u.color = d.color;
+          if (typeof d.init === 'string' && d.init.trim()) u.init = escapeHtml(String(d.init).slice(0, 4));
+          if (typeof d.tag === 'string') u.tag = escapeHtml(String(d.tag).slice(0, 8));
+          u.avatar = escapeHtml(String(d.avatar || '').slice(0, 4));
+          u.banner = escapeHtml(String(d.banner || '').slice(0, 24));
+          u.about = escapeHtml(String(d.about || '').slice(0, 180));
+        }
+        broadcast({type:'profile_update', uid:me, user:{
+          name:u?.name||'', color:u?.color||'', init:u?.init||'', tag:u?.tag||'', status:u?.status||'online',
+          activity:u?.activity||'', avatar:u?.avatar||'', banner:u?.banner||'', about:u?.about||'', role:roles.get(me)||'user'
+        }}, me);
+        break;
+      }
+      case 'move_voice': {
+        if (myRole!=='admin' && myRole!=='mod') break;
+        const targetUid = d.uid;
+        const newRoom = String(d.room || '').slice(0, 64);
+        const tu = users.get(targetUid);
+        if (!tu || !newRoom) break;
+        const oldRoom = tu.room;
+        if (oldRoom === newRoom) break;
+        if (oldRoom) {
+          const r = rooms.get(oldRoom);
+          if (r) { r.delete(targetUid); if (!r.size) rooms.delete(oldRoom); }
+          broadcastRoom(oldRoom, {type:'peer_left', uid:targetUid});
+        }
+        if (!rooms.has(newRoom)) rooms.set(newRoom, new Set());
+        rooms.get(newRoom).add(targetUid);
+        tu.room = newRoom;
+        send(targetUid, {type:'voice_moved', room:newRoom, by: users.get(me)?.name || 'Модератор'});
+        broadcastRoom(newRoom, {type:'peer_joined', uid:targetUid, name:tu.name, color:tu.color, init:tu.init, role:roles.get(targetUid)||'user'}, targetUid);
+        broadcast({type:'voice_update', rooms:roomList()});
+        break;
+      }
+      case 'set_room_zone': {
+        if (myRole!=='admin' && myRole!=='mod') break;
+        const room = String(d.room || '').slice(0, 64);
+        const zone = String(d.zone || 'default').slice(0, 16);
+        if (!room) break;
+        roomZones.set(room, zone);
+        broadcast({type:'room_zone_update', room, zone});
+        break;
+      }
+      case 'watch_screen': {
+        const streamerUid = d.uid;
+        const viewer = users.get(me);
+        const streamer = users.get(streamerUid);
+        if (!viewer || !streamer || !viewer.room || viewer.room !== streamer.room || !streamer.screenSharing) break;
+        if (!screenWatchers.has(streamerUid)) screenWatchers.set(streamerUid, new Set());
+        screenWatchers.get(streamerUid).add(me);
+        broadcastScreenWatchers(streamerUid, streamer.room);
+        break;
+      }
+      case 'unwatch_screen': {
+        const streamerUid = d.uid;
+        const streamer = users.get(streamerUid);
+        const set = screenWatchers.get(streamerUid);
+        if (set) {
+          set.delete(me);
+          if (!set.size) screenWatchers.delete(streamerUid);
+        }
+        broadcastScreenWatchers(streamerUid, streamer?.room || '');
+        break;
       }
       case 'status': {
         const u=users.get(me);
@@ -335,6 +445,8 @@ wss.on('connection', ws => {
     clearInterval(pingInterval);
     if (!me) return;
     const u = users.get(me);
+    clearStreamerWatchers(me);
+    removeViewerFromAll(me);
     if(u?.room){const r=rooms.get(u.room);if(r){r.delete(me);if(!r.size)rooms.delete(u.room);}broadcastRoom(u.room,{type:'peer_left',uid:me});}
     users.delete(me);
     if (firstUser===me) firstUser=null;
