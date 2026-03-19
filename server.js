@@ -3,46 +3,13 @@ const { WebSocketServer } = require('ws');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
-
-// ── Rate limiting ──
-const rateLimits = new Map();
-const RATE_LIMIT_WINDOW = 1000; // 1 second
-const RATE_LIMIT_MAX = 30; // messages per second
-
-function checkRateLimit(uid) {
-  const now = Date.now();
-  if (!rateLimits.has(uid)) {
-    rateLimits.set(uid, { count: 0, resetAt: now + RATE_LIMIT_WINDOW });
-  }
-  const limit = rateLimits.get(uid);
-  if (now > limit.resetAt) {
-    limit.count = 0;
-    limit.resetAt = now + RATE_LIMIT_WINDOW;
-  }
-  limit.count++;
-  return limit.count <= RATE_LIMIT_MAX;
-}
-
-// ── HTML Escape Utility ──
-function escapeHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 const users   = new Map();
 const rooms   = new Map();
 const msgs    = { general:[], gaming:[], dev:[] };
 const dmMsgs  = new Map();
-const roomZones = new Map();
-const roomConfigs = new Map();
-const screenWatchers = new Map();
 
 // ── Roles: first user to join becomes Admin ──
 const roles = new Map(); // uid -> 'admin'|'mod'|'user'
@@ -110,8 +77,8 @@ const broadcastRoom = (room, data, skip=null) => {
 const onlineList = () => {
   const o = {};
   users.forEach((u,uid) => {
-    o[uid] = { name:escapeHtml(u.name), color:u.color, init:escapeHtml(u.init||''), tag:escapeHtml(u.tag||''),
-      status:u.status||'online', activity:escapeHtml(u.activity||''), avatar:escapeHtml(u.avatar||''), banner:escapeHtml(u.banner||''), about:escapeHtml(u.about||''), badge:escapeHtml(u.badge||''), nickColor:escapeHtml(u.nickColor||''),
+    o[uid] = { name:u.name, color:u.color, init:u.init, tag:u.tag,
+      status:u.status||'online', activity:u.activity||'',
       role:roles.get(uid)||'user' };
   });
   return o;
@@ -122,54 +89,13 @@ const roomList = () => {
     r[room] = {};
     uids.forEach(uid => {
       const u = users.get(uid);
-      if(u) r[room][uid] = { name:escapeHtml(u.name), color:u.color, init:escapeHtml(u.init||''),
-        speaking:u.speaking||false, screenSharing:u.screenSharing||false, avatar:escapeHtml(u.avatar||''), badge:escapeHtml(u.badge||''), nickColor:escapeHtml(u.nickColor||''),
+      if(u) r[room][uid] = { name:u.name, color:u.color, init:u.init,
+        speaking:u.speaking||false, screenSharing:u.screenSharing||false,
         role:roles.get(uid)||'user', ping:u.ping||0 };
     });
   });
   return r;
 };
-
-const roomZoneList = () => {
-  const z = {};
-  roomZones.forEach((zone, room) => { z[room] = zone; });
-  return z;
-};
-const roomConfigList = () => {
-  const cfg = {};
-  roomConfigs.forEach((meta, room) => {
-    cfg[room] = { limit: meta?.limit || 0, hasPassword: !!(meta?.password) };
-  });
-  return cfg;
-};
-const watchersPayload = (uid) => ({
-  type: 'screen_watchers',
-  uid,
-  count: screenWatchers.get(uid)?.size || 0,
-  viewers: [...(screenWatchers.get(uid) || [])]
-});
-function broadcastScreenWatchers(uid, room='') {
-  const payload = watchersPayload(uid);
-  if (room) broadcastRoom(room, payload);
-  else broadcast(payload);
-}
-function clearStreamerWatchers(uid) {
-  if (screenWatchers.has(uid)) {
-    const u = users.get(uid);
-    screenWatchers.delete(uid);
-    broadcastScreenWatchers(uid, u?.room || '');
-  }
-}
-function removeViewerFromAll(uid) {
-  screenWatchers.forEach((set, streamerUid) => {
-    if (set.delete(uid)) {
-      const su = users.get(streamerUid);
-      broadcastScreenWatchers(streamerUid, su?.room || '');
-    }
-    if (!set.size) screenWatchers.delete(streamerUid);
-  });
-}
-
 
 wss.on('connection', ws => {
   let me = null;
@@ -221,22 +147,17 @@ wss.on('connection', ws => {
 
     if (d.type === 'join') {
       me = d.uid;
-      // Sanitize input
-      const cleanName = escapeHtml(String(d.name || 'User').slice(0, 24));
-      const cleanInit = escapeHtml(String(d.init || cleanName[0] || 'U').slice(0, 2));
-      const cleanTag = escapeHtml(String(d.tag || '').slice(0, 8));
-
-      const role = roles.get(me) || (firstUser===null ? 'admin' : 'user');
+      const role = firstUser===null ? 'admin' : 'user';
       if (firstUser===null) firstUser = me;
       roles.set(me, role);
-      users.set(me, { ws, name:cleanName, color:d.color, init:cleanInit, tag:cleanTag,
-        status:'online', activity:'', avatar: escapeHtml(String(d.avatar||'').slice(0,4)), banner: escapeHtml(String(d.banner||'').slice(0,24)), about: escapeHtml(String(d.about||'').slice(0,180)), badge: escapeHtml(String(d.badge||'').slice(0,16)), nickColor: escapeHtml(String(d.nickColor||'').slice(0,16)), speaking:false, screenSharing:false, room:null, ping:0, sampleRate:d.sampleRate||48000 });
+      users.set(me, { ws, name:d.name, color:d.color, init:d.init, tag:d.tag,
+        status:'online', activity:'', speaking:false, screenSharing:false, room:null, ping:0, sampleRate:d.sampleRate||48000 });
       stats.conns++;
       if (users.size > stats.peak) stats.peak = users.size;
-      ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role, roomZones:roomZoneList(), roomConfigs: roomConfigList() }));
+      ws.send(JSON.stringify({ type:'init', users:onlineList(), rooms:roomList(), msgs, myRole:role }));
       dmMsgs.forEach((m,convId) => { if(convId.includes(me)) ws.send(JSON.stringify({type:'dm_history',convId,msgs:m})); });
-      broadcast({ type:'user_join', uid:me, user:{name:cleanName,color:d.color,init:cleanInit,tag:cleanTag,status:'online',activity:'',avatar:escapeHtml(String(d.avatar||'').slice(0,4)),banner:escapeHtml(String(d.banner||'').slice(0,24)),about:escapeHtml(String(d.about||'').slice(0,180)),badge:escapeHtml(String(d.badge||'').slice(0,16)),nickColor:escapeHtml(String(d.nickColor||'').slice(0,16)),role} }, me);
-      console.log(`+ ${cleanName} [${role}]`);
+      broadcast({ type:'user_join', uid:me, user:{name:d.name,color:d.color,init:d.init,tag:d.tag,status:'online',activity:'',role} }, me);
+      console.log(`+ ${d.name} [${role}]`);
       return;
     }
     if (!me) return;
@@ -244,16 +165,9 @@ wss.on('connection', ws => {
 
     switch (d.type) {
       case 'chat': {
-        // Rate limit check
-        if (!checkRateLimit(me)) {
-          ws.send(JSON.stringify({type:'error', msg:'Слишком много сообщений'}));
-          break;
-        }
-        // Sanitize text
-        const cleanText = escapeHtml(String(d.text || '').slice(0, 2000));
-        const m = { from:me, fromName:escapeHtml(users.get(me)?.name||'?'), fromColor:users.get(me)?.color,
-          fromInit:escapeHtml(users.get(me)?.init||'?'), fromRole:myRole, text:cleanText, time:d.time, ts:d.ts||Date.now() };
-        const ch = String(d.channel||'general').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+        const m = { from:me, fromName:users.get(me)?.name, fromColor:users.get(me)?.color,
+          fromInit:users.get(me)?.init, fromRole:myRole, text:d.text, time:d.time, ts:Date.now() };
+        const ch = d.channel||'general';
         if (!msgs[ch]) msgs[ch]=[];
         msgs[ch].push(m); if(msgs[ch].length>200) msgs[ch].shift();
         stats.msgCount++;
@@ -261,18 +175,9 @@ wss.on('connection', ws => {
         break;
       }
       case 'dm': {
-        // Rate limit check
-        if (!checkRateLimit(me)) {
-          ws.send(JSON.stringify({type:'error', msg:'Слишком много сообщений'}));
-          break;
-        }
-        // Validate recipient
-        if (!d.to || !users.has(d.to)) break;
-        // Sanitize text
-        const cleanText = escapeHtml(String(d.text || '').slice(0, 2000));
         const convId=[me,d.to].sort().join('_vs_');
-        const m={from:me,fromName:escapeHtml(users.get(me)?.name||'?'),fromColor:users.get(me)?.color,
-          fromInit:escapeHtml(users.get(me)?.init||'?'),fromRole:myRole,text:cleanText,time:d.time,ts:d.ts||Date.now()};
+        const m={from:me,fromName:users.get(me)?.name,fromColor:users.get(me)?.color,
+          fromInit:users.get(me)?.init,fromRole:myRole,text:d.text,time:d.time,ts:Date.now()};
         if(!dmMsgs.has(convId)) dmMsgs.set(convId,[]);
         const conv=dmMsgs.get(convId);
         conv.push(m); if(conv.length>200) conv.shift();
@@ -298,19 +203,9 @@ wss.on('connection', ws => {
         break;
       }
 
-      case 'friend_req':    send(d.to,{type:'friend_req',from:me,name:escapeHtml(users.get(me)?.name||'?'),color:users.get(me)?.color,init:escapeHtml(users.get(me)?.init||'?'),tag:escapeHtml(users.get(me)?.tag||'')}); break;
-      case 'friend_accept': send(d.to,{type:'friend_accept',from:me,name:escapeHtml(users.get(me)?.name||'?')}); break;
-      case 'call': {
-        // Check if target is already in a voice channel
-        const targetUser = users.get(d.to);
-        if (targetUser?.room) {
-          // Target is in voice - send error to caller
-          send(me, {type:'call_failed', reason:'target_in_voice', name:escapeHtml(targetUser?.name||'?')});
-        } else {
-          send(d.to,{type:'incoming_call',from:me,name:escapeHtml(users.get(me)?.name||'?'),color:users.get(me)?.color,init:escapeHtml(users.get(me)?.init||'?'),video:d.video});
-        }
-        break;
-      }
+      case 'friend_req':    send(d.to,{type:'friend_req',from:me,name:users.get(me)?.name,color:users.get(me)?.color,init:users.get(me)?.init,tag:users.get(me)?.tag}); break;
+      case 'friend_accept': send(d.to,{type:'friend_accept',from:me,name:users.get(me)?.name}); break;
+      case 'call':          send(d.to,{type:'incoming_call',from:me,name:users.get(me)?.name,color:users.get(me)?.color,init:users.get(me)?.init,video:d.video}); break;
       case 'call_answer':   send(d.to,{type:'call_answered',from:me}); break;
       case 'call_decline':  send(d.to,{type:'call_declined',from:me}); break;
       case 'rtc_offer':     send(d.to,{type:'rtc_offer',from:me,sdp:d.sdp,kind:d.kind||'screen'}); break;
@@ -319,37 +214,23 @@ wss.on('connection', ws => {
 
       case 'screen_start': {
         const u=users.get(me); if(u) u.screenSharing=true;
-        clearStreamerWatchers(me);
-        broadcastRoom(u?.room||'',{type:'screen_start',uid:me,name:escapeHtml(users.get(me)?.name||'?')},me);
-        broadcastScreenWatchers(me, u?.room||'');
+        broadcastRoom(u?.room||'',{type:'screen_start',uid:me,name:users.get(me)?.name},me);
         broadcast({type:'voice_update',rooms:roomList()}); break;
       }
       case 'screen_stop': {
         const u=users.get(me); if(u) u.screenSharing=false;
-        clearStreamerWatchers(me);
         broadcastRoom(u?.room||'',{type:'screen_stop',uid:me},me);
         broadcast({type:'voice_update',rooms:roomList()}); break;
       }
       case 'join_voice': {
         const u=users.get(me);
-        const roomName = String(d.room || '').slice(0, 64);
-        const cfg = roomConfigs.get(roomName) || { limit:0, password:'' };
-        const existing = rooms.get(roomName);
-        if (cfg.password && String(d.pass || '') !== String(cfg.password)) {
-          send(me, {type:'room_join_error', room: roomName, reason:'wrong_password'});
-          break;
-        }
-        if (cfg.limit && existing && !existing.has(me) && existing.size >= cfg.limit) {
-          send(me, {type:'room_join_error', room: roomName, reason:'room_full', limit: cfg.limit});
-          break;
-        }
         if(u?.room){const prev=rooms.get(u.room);if(prev){prev.delete(me);if(!prev.size)rooms.delete(u.room);}}
-        if(!rooms.has(roomName)) rooms.set(roomName,new Set());
-        rooms.get(roomName).add(me); u.room=roomName;
+        if(!rooms.has(d.room)) rooms.set(d.room,new Set());
+        rooms.get(d.room).add(me); u.room=d.room;
         broadcast({type:'voice_update',rooms:roomList()});
-        broadcastRoom(roomName,{type:'peer_joined',uid:me,name:u.name,color:u.color,init:u.init,role:myRole},me);
-        ws.send(JSON.stringify({type:'voice_joined',room:roomName,
-          peers:[...rooms.get(roomName)].filter(x=>x!==me).map(uid=>{
+        broadcastRoom(d.room,{type:'peer_joined',uid:me,name:u.name,color:u.color,init:u.init,role:myRole},me);
+        ws.send(JSON.stringify({type:'voice_joined',room:d.room,
+          peers:[...rooms.get(d.room)].filter(x=>x!==me).map(uid=>{
             const u=users.get(uid);
             return{uid,name:u?.name,color:u?.color,init:u?.init,screenSharing:u?.screenSharing||false,role:roles.get(uid)||'user',ping:u?.ping||0};
           })}));
@@ -357,17 +238,15 @@ wss.on('connection', ws => {
       }
       case 'leave_voice': {
         const u=users.get(me); if(u) u.screenSharing=false;
-        clearStreamerWatchers(me);
-        removeViewerFromAll(me);
         if(u?.room){const r=rooms.get(u.room);if(r){r.delete(me);if(!r.size)rooms.delete(u.room);}broadcastRoom(u.room,{type:'peer_left',uid:me});u.room=null;}
         broadcast({type:'voice_update',rooms:roomList()}); break;
       }
       case 'typing': {
         // Relay typing to target (DM or server channel)
         if(d.ctx==='dm' && d.target){
-          send(d.target, {type:'typing',uid:me,ctx:'dm',name:escapeHtml(users.get(me)?.name||'?')});
+          send(d.target, {type:'typing',uid:me,ctx:'dm',name:users.get(me)?.name});
         } else if(d.ctx==='srv'){
-          broadcast({type:'typing',uid:me,ctx:'srv',target:d.target,name:escapeHtml(users.get(me)?.name||'?')}, me);
+          broadcast({type:'typing',uid:me,ctx:'srv',target:d.target,name:users.get(me)?.name}, me);
         }
         break;
       }
@@ -375,148 +254,9 @@ wss.on('connection', ws => {
         const u=users.get(me); if(u) u.speaking=d.speaking;
         if(u?.room) broadcastRoom(u.room,{type:'speaking',uid:me,speaking:d.speaking},me); break;
       }
-
-
-      case 'edit_msg': {
-        const ts = Number(d.ts);
-        const newText = escapeHtml(String(d.text || '').slice(0, 2000));
-        if (!ts || !newText) break;
-        if (d.scope === 'dm' && d.to) {
-          const convId = [me, d.to].sort().join('_vs_');
-          const conv = dmMsgs.get(convId) || [];
-          const item = conv.find(x => Number(x.ts)===ts && x.from===me);
-          if (!item) break;
-          item.text = newText;
-          item.edited = true;
-          send(d.to, {type:'msg_edited', scope:'dm', uid:me, target:d.to, ts, text:newText});
-          send(me, {type:'msg_edited', scope:'dm', uid:me, target:d.to, ts, text:newText});
-        } else if (d.scope === 'srv' && d.channel) {
-          const ch = String(d.channel||'').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
-          const arr = msgs[ch] || [];
-          const item = arr.find(x => Number(x.ts)===ts && x.from===me);
-          if (!item) break;
-          item.text = newText;
-          item.edited = true;
-          broadcast({type:'msg_edited', scope:'srv', channel:ch, uid:me, ts, text:newText});
-        }
-        break;
-      }
-      case 'delete_msg': {
-        const ts = Number(d.ts);
-        if (!ts) break;
-        if (d.scope === 'dm' && d.to) {
-          const convId = [me, d.to].sort().join('_vs_');
-          const conv = dmMsgs.get(convId) || [];
-          const item = conv.find(x => Number(x.ts)===ts && x.from===me);
-          if (!item) break;
-          item.deleted = true;
-          item.text = 'Сообщение удалено';
-          send(d.to, {type:'msg_deleted', scope:'dm', uid:me, target:d.to, ts});
-          send(me, {type:'msg_deleted', scope:'dm', uid:me, target:d.to, ts});
-        } else if (d.scope === 'srv' && d.channel) {
-          const ch = String(d.channel||'').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
-          const arr = msgs[ch] || [];
-          const item = arr.find(x => Number(x.ts)===ts && x.from===me);
-          if (!item) break;
-          item.deleted = true;
-          item.text = 'Сообщение удалено';
-          broadcast({type:'msg_deleted', scope:'srv', channel:ch, uid:me, ts});
-        }
-        break;
-      }
-
-      case 'profile_update': {
-        const u = users.get(me);
-        if (u) {
-          if (typeof d.name === 'string' && d.name.trim()) u.name = escapeHtml(String(d.name).slice(0, 24));
-          if (typeof d.color === 'string') u.color = d.color;
-          if (typeof d.init === 'string' && d.init.trim()) u.init = escapeHtml(String(d.init).slice(0, 4));
-          if (typeof d.tag === 'string') u.tag = escapeHtml(String(d.tag).slice(0, 8));
-          u.avatar = escapeHtml(String(d.avatar || '').slice(0, 4));
-          u.banner = escapeHtml(String(d.banner || '').slice(0, 24));
-          u.about = escapeHtml(String(d.about || '').slice(0, 180));
-          u.badge = escapeHtml(String(d.badge || '').slice(0, 16));
-          u.nickColor = escapeHtml(String(d.nickColor || '').slice(0, 16));
-        }
-        broadcast({type:'profile_update', uid:me, user:{
-          name:u?.name||'', color:u?.color||'', init:u?.init||'', tag:u?.tag||'', status:u?.status||'online',
-          activity:u?.activity||'', avatar:u?.avatar||'', banner:u?.banner||'', about:u?.about||'', badge:u?.badge||'', nickColor:u?.nickColor||'', role:roles.get(me)||'user'
-        }}, me);
-        break;
-      }
-      case 'move_voice': {
-        if (myRole!=='admin' && myRole!=='mod') break;
-        const targetUid = d.uid;
-        const newRoom = String(d.room || '').slice(0, 64);
-        const tu = users.get(targetUid);
-        if (!tu || !newRoom) break;
-        const oldRoom = tu.room;
-        if (oldRoom === newRoom) break;
-        if (oldRoom) {
-          const r = rooms.get(oldRoom);
-          if (r) { r.delete(targetUid); if (!r.size) rooms.delete(oldRoom); }
-          broadcastRoom(oldRoom, {type:'peer_left', uid:targetUid});
-        }
-        if (!rooms.has(newRoom)) rooms.set(newRoom, new Set());
-        rooms.get(newRoom).add(targetUid);
-        tu.room = newRoom;
-        send(targetUid, {type:'voice_moved', room:newRoom, by: users.get(me)?.name || 'Модератор'});
-        broadcastRoom(newRoom, {type:'peer_joined', uid:targetUid, name:tu.name, color:tu.color, init:tu.init, role:roles.get(targetUid)||'user'}, targetUid);
-        broadcast({type:'voice_update', rooms:roomList()});
-        break;
-      }
-      case 'set_room_prefs': {
-        if (myRole!=='admin' && myRole!=='mod') break;
-        const room = String(d.room || '').slice(0, 64);
-        if (!room) break;
-        const limit = Math.max(0, Math.min(99, parseInt(d.limit, 10) || 0));
-        const password = String(d.password || '').slice(0, 64);
-        roomConfigs.set(room, { limit, password });
-        broadcast({type:'room_prefs_update', room, prefs:{ limit, hasPassword: !!password }});
-        break;
-      }
-      case 'set_room_zone': {
-        if (myRole!=='admin' && myRole!=='mod') break;
-        const room = String(d.room || '').slice(0, 64);
-        const zone = String(d.zone || 'default').slice(0, 16);
-        if (!room) break;
-        roomZones.set(room, zone);
-        broadcast({type:'room_zone_update', room, zone});
-        break;
-      }
-      case 'watch_screen': {
-        const streamerUid = d.uid;
-        const viewer = users.get(me);
-        const streamer = users.get(streamerUid);
-        if (!viewer || !streamer || !viewer.room || viewer.room !== streamer.room || !streamer.screenSharing) break;
-        if (!screenWatchers.has(streamerUid)) screenWatchers.set(streamerUid, new Set());
-        screenWatchers.get(streamerUid).add(me);
-        broadcastScreenWatchers(streamerUid, streamer.room);
-        break;
-      }
-      case 'unwatch_screen': {
-        const streamerUid = d.uid;
-        const streamer = users.get(streamerUid);
-        const set = screenWatchers.get(streamerUid);
-        if (set) {
-          set.delete(me);
-          if (!set.size) screenWatchers.delete(streamerUid);
-        }
-        broadcastScreenWatchers(streamerUid, streamer?.room || '');
-        break;
-      }
       case 'status': {
-        const u=users.get(me);
-        if(u){
-          u.status=String(d.status||'online').slice(0,16);
-          u.activity=escapeHtml(String(d.activity||'').slice(0,64));
-        }
-        broadcast({type:'user_update',uid:me,status:u?.status,activity:u?.activity||''}); break;
-      }
-      case 'ping': {
-        // Client-side keepalive ping - respond with pong
-        ws.send(JSON.stringify({type:'pong',time:d.time}));
-        break;
+        const u=users.get(me); if(u){u.status=d.status;u.activity=d.activity||'';}
+        broadcast({type:'user_update',uid:me,status:d.status,activity:d.activity||''}); break;
       }
     }
   });
@@ -525,8 +265,6 @@ wss.on('connection', ws => {
     clearInterval(pingInterval);
     if (!me) return;
     const u = users.get(me);
-    clearStreamerWatchers(me);
-    removeViewerFromAll(me);
     if(u?.room){const r=rooms.get(u.room);if(r){r.delete(me);if(!r.size)rooms.delete(u.room);}broadcastRoom(u.room,{type:'peer_left',uid:me});}
     users.delete(me);
     if (firstUser===me) firstUser=null;
