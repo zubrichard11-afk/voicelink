@@ -182,7 +182,7 @@ wss.on('connection', ws => {
       const cleanInit = escapeHtml(String(d.init || cleanName[0] || 'U').slice(0, 2));
       const cleanTag = escapeHtml(String(d.tag || '').slice(0, 8));
 
-      const role = firstUser===null ? 'admin' : 'user';
+      const role = roles.get(me) || (firstUser===null ? 'admin' : 'user');
       if (firstUser===null) firstUser = me;
       roles.set(me, role);
       users.set(me, { ws, name:cleanName, color:d.color, init:cleanInit, tag:cleanTag,

@@ -1107,6 +1107,18 @@ button:not(:disabled):active { transform: scale(.96) !important; }
 <div id="pttOverlay" style="display:none;position:fixed;bottom:140px;right:20px;background:rgba(35,165,90,.9);color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;z-index:501;pointer-events:none">🎙 PTT активен</div>
 <div id="toastBox"></div>
 
+<div id="userCtxMenu" style="display:none;position:fixed;z-index:2000;min-width:220px;background:#111214;border:1px solid rgba(255,255,255,.08);border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.45);overflow:hidden;font-family:'JetBrains Mono',monospace"></div>
+
+<div id="screenWatchOverlay" onclick="if(event.target===this)closeScreenWatchOverlay()" style="display:none;position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.92);align-items:center;justify-content:center;padding:24px">
+  <div id="screenWatchContent" style="width:min(96vw,1600px);height:min(92vh,900px);background:#0b0c10;border:1px solid rgba(255,255,255,.08);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.55)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08);gap:12px">
+      <div id="screenWatchTitle" style="font-size:14px;font-weight:700;color:#fff">Смотрим стрим</div>
+      <button type="button" onclick="closeScreenWatchOverlay()" style="border:none;background:rgba(255,255,255,.08);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer;font:inherit">Закрыть ✕</button>
+    </div>
+    <div id="screenWatchStage" style="flex:1;min-height:0;background:#000;display:flex;align-items:center;justify-content:center"></div>
+  </div>
+</div>
+
 <script>
 // ══════════════════════════════════════
 // STATE
@@ -1190,6 +1202,177 @@ let selectedMicId='';      // '' = default
 let selectedOutputId='';   // '' = default
 let micGainValue=1.0;      // 0..2
 window._volumeGain=1.0;    // output gain
+
+const USER_VOLUME_KEY='vl_user_volumes';
+let userVolumeOverrides={};
+let currentUserContextUid=null;
+const watchedScreens=new Set();
+
+function loadUserVolumeOverrides(){
+  try{
+    const raw=localStorage.getItem(USER_VOLUME_KEY);
+    userVolumeOverrides=raw?JSON.parse(raw):{};
+  }catch(e){userVolumeOverrides={};}
+}
+function saveUserVolumeOverrides(){
+  try{localStorage.setItem(USER_VOLUME_KEY,JSON.stringify(userVolumeOverrides));}catch(e){}
+}
+function getUserVolume(uid){
+  const val=Number(userVolumeOverrides?.[uid]);
+  if(!Number.isFinite(val)) return 1;
+  return Math.max(0,Math.min(2,val));
+}
+function applyPeerVolume(uid){
+  const state=peerAudio.get(uid);
+  if(state&&state.gainNode){
+    state.gainNode.gain.value=(window._volumeGain||1)*getUserVolume(uid);
+  }
+}
+function applyAllPeerVolumes(){
+  peerAudio.forEach((_,uid)=>applyPeerVolume(uid));
+}
+function getUserMenuLabel(uid){
+  const percent=Math.round(getUserVolume(uid)*100);
+  const user=getUser(uid)||{};
+  return `${user.name||'Пользователь'} — ${percent}%`;
+}
+function hideUserContextMenu(){
+  const menu=document.getElementById('userCtxMenu');
+  if(menu) menu.style.display='none';
+  currentUserContextUid=null;
+}
+function setUserVolume(uid, percent){
+  if(!uid) return;
+  userVolumeOverrides[uid]=Math.max(0,Math.min(2,Number(percent)/100));
+  saveUserVolumeOverrides();
+  applyPeerVolume(uid);
+  renderVCUsers();
+  updateVCBar();
+  if(inVoice) updateCallWindow();
+  hideUserContextMenu();
+  const user=getUser(uid)||{};
+  toast('Громкость', '🔊', `${user.name||'Пользователь'}: ${Math.round(getUserVolume(uid)*100)}%`, 'info');
+}
+function resetUserVolume(uid){
+  if(!uid) return;
+  delete userVolumeOverrides[uid];
+  saveUserVolumeOverrides();
+  applyPeerVolume(uid);
+  renderVCUsers();
+  updateVCBar();
+  if(inVoice) updateCallWindow();
+  hideUserContextMenu();
+}
+function showUserContextMenu(ev, uid){
+  if(!uid || uid===myUid) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  currentUserContextUid=uid;
+  const menu=document.getElementById('userCtxMenu');
+  if(!menu) return;
+  const user=getUser(uid)||{};
+  const current=Math.round(getUserVolume(uid)*100);
+  const opts=[0,25,50,75,100,125,150,200];
+  menu.innerHTML=`
+    <div style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08)">
+      <div style="font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(user.name||'Пользователь')}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:3px">Громкость: ${current}%</div>
+    </div>
+    <div style="padding:6px">
+      ${opts.map(v=>`<button type="button" onclick="setUserVolume('${uid}', ${v})" style="width:100%;text-align:left;background:${current===v?'rgba(88,101,242,.22)':'transparent'};border:none;color:${current===v?'#fff':'rgba(255,255,255,.88)'};padding:8px 10px;border-radius:8px;cursor:pointer;font:inherit">${v===0?'🔇 Заглушить':`🔊 ${v}%`}</button>`).join('')}
+      <button type="button" onclick="resetUserVolume('${uid}')" style="width:100%;text-align:left;background:transparent;border:none;color:rgba(255,255,255,.65);padding:8px 10px;border-radius:8px;cursor:pointer;font:inherit">↺ Сбросить</button>
+    </div>
+  `;
+  menu.style.display='block';
+  const width=220;
+  const height=Math.min(420, menu.offsetHeight || 380);
+  const maxX=window.innerWidth-width-12;
+  const maxY=window.innerHeight-height-12;
+  menu.style.left=Math.max(8,Math.min(ev.clientX,maxX))+'px';
+  menu.style.top=Math.max(8,Math.min(ev.clientY,maxY))+'px';
+}
+function openScreenStream(uid){
+  const tile=document.getElementById('screentile_'+uid);
+  const overlay=document.getElementById('screenWatchOverlay');
+  const stage=document.getElementById('screenWatchStage');
+  const title=document.getElementById('screenWatchTitle');
+  if(!tile || !overlay || !stage || !title) return;
+  watchedScreens.add(uid);
+  const user=uid===myUid?ME:(getUser(uid)||{});
+  const cover=document.getElementById('scrcover_'+uid);
+  if(cover) cover.style.display='none';
+  const node=tile.querySelector('video,canvas');
+  if(!node) return;
+  stage.innerHTML='';
+  const clone=node.cloneNode(true);
+  clone.id='watching_'+uid;
+  clone.style.width='100%';
+  clone.style.height='100%';
+  clone.style.objectFit='contain';
+  clone.style.display='block';
+  clone.style.background='#000';
+  clone.setAttribute('playsinline','');
+  stage.appendChild(clone);
+  if(node.tagName==='VIDEO' && node.srcObject){
+    clone.muted=true;
+    clone.srcObject=node.srcObject;
+    clone.play?.().catch(()=>{});
+  }else if(node.tagName==='CANVAS'){
+    const sync=()=>{
+      const active=document.getElementById('watching_'+uid);
+      const src=document.getElementById('scrcanvas_'+uid);
+      if(!active || !src || active.tagName!=='CANVAS') return;
+      if(active.width!==src.width || active.height!==src.height){
+        active.width=src.width || 1280;
+        active.height=src.height || 720;
+      }
+      const ctx=active.getContext('2d');
+      if(ctx && src.width && src.height) ctx.drawImage(src,0,0);
+      if(overlay.style.display!=='none') requestAnimationFrame(sync);
+    };
+    requestAnimationFrame(sync);
+  }
+  title.textContent='Смотрим стрим — '+(user.name||'Пользователь');
+  overlay.style.display='flex';
+  overlay.dataset.uid=uid;
+  const fsEl=document.getElementById('screenWatchContent') || overlay;
+  if(fsEl.requestFullscreen){
+    fsEl.requestFullscreen().catch(()=>{});
+  }
+}
+function closeScreenWatchOverlay(){
+  const overlay=document.getElementById('screenWatchOverlay');
+  const stage=document.getElementById('screenWatchStage');
+  if(stage) stage.innerHTML='';
+  if(overlay){
+    overlay.style.display='none';
+    delete overlay.dataset.uid;
+  }
+  if(document.fullscreenElement){
+    document.exitFullscreen().catch(()=>{});
+  }
+}
+
+loadUserVolumeOverrides();
+
+document.addEventListener('click', e=>{
+  const menu=document.getElementById('userCtxMenu');
+  if(menu && menu.style.display!=='none' && !menu.contains(e.target)) hideUserContextMenu();
+});
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){
+    hideUserContextMenu();
+    const overlay=document.getElementById('screenWatchOverlay');
+    if(overlay && overlay.style.display!=='none') closeScreenWatchOverlay();
+  }
+});
+document.addEventListener('fullscreenchange', ()=>{
+  const overlay=document.getElementById('screenWatchOverlay');
+  if(overlay && overlay.style.display!=='none' && !document.fullscreenElement){
+    // Keep overlay open even after exiting fullscreen; only close media on explicit close.
+  }
+});
+
 
 // color picker — legacy ref removed, now handled by initColorPickers()
 let chosenColor=AVCOLORS[0]; // kept for compat
@@ -1390,6 +1573,11 @@ function connectWS(){
   ws.onopen=()=>{
     wsReconnectAttempts=0;
     ws.send(JSON.stringify({type:'join',uid:myUid,name:ME.name,color:ME.color,init:ME.init,tag:ME.tag,sampleRate:SAMPLE_RATE}));
+    if(inVoice&&currentVoiceRoom){
+      ws.send(JSON.stringify({type:'join_voice',room:currentVoiceRoom}));
+      if(screenSharing&&screenStream) ws.send(JSON.stringify({type:'screen_start'}));
+      scheduleUI(()=>{renderVCUsers();updateVCBar();if(inVoice)updateCallWindow();});
+    }
     showStatus('Подключено ✓','connected');
     setTimeout(hideStatus,2000);
     setWsDot('green');
@@ -1551,6 +1739,9 @@ function handleWS(d){
       toast('Голосовой','👤',d.name+' зашёл в канал','info');break;
     case 'peer_left':
       toast('Голосовой','👋',(getUser(d.uid).name||d.uid)+' вышел','info');
+      watchedScreens.delete(d.uid);
+      const activeOverlay1=document.getElementById('screenWatchOverlay');
+      if(activeOverlay1?.dataset?.uid===d.uid) closeScreenWatchOverlay();
       rtcClosePeer(d.uid);
       rtcScreenVideos.delete(d.uid);
       cleanupPeerAudio(d.uid);
@@ -1574,6 +1765,9 @@ function handleWS(d){
       break;
     case 'screen_stop':
       toast('Демонстрация','🖥',(getUser(d.uid).name||d.uid)+' остановил демонстрацию','info');
+      watchedScreens.delete(d.uid);
+      const activeOverlay2=document.getElementById('screenWatchOverlay');
+      if(activeOverlay2?.dataset?.uid===d.uid) closeScreenWatchOverlay();
       rtcClosePeer(d.uid);
       rtcScreenVideos.delete(d.uid);
       screenCanvases.delete(d.uid);
@@ -1794,7 +1988,7 @@ function getPeerState(uid){
   if(!peerAudio.has(uid)){
     const ctx=getRemoteCtx();
     const gainNode=ctx.createGain();
-    gainNode.gain.value=window._volumeGain||1;
+    gainNode.gain.value=(window._volumeGain||1)*getUserVolume(uid);
     gainNode.connect(ctx.destination);
     peerAudio.set(uid,{nextTime:0, gainNode, pingMs:30});
   }
@@ -1852,7 +2046,7 @@ function handleAudioChunk(buf){
     if(ctx.state==='suspended') return;
   }
   const state=getPeerState(fromUid);
-  state.gainNode.gain.value=window._volumeGain||1;
+  state.gainNode.gain.value=(window._volumeGain||1)*getUserVolume(fromUid);
   let abuf;
   try{
     abuf=ctx.createBuffer(1,f32.length,peerSampleRate);
@@ -2918,7 +3112,7 @@ function _renderCWPartPanel(){
     all.map(u=>{
       const isMic=u.isMe&&micMuted;
       const spk=u.speaking&&!isMic;
-      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;${spk?'background:rgba(35,165,90,.1)':''}margin-bottom:2px">
+      return `<div data-user-ctx="${u.uid}" oncontextmenu="showUserContextMenu(event,'${u.uid}')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;${spk?'background:rgba(35,165,90,.1)':''}margin-bottom:2px">
         <div style="width:32px;height:32px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;${spk?'box-shadow:0 0 0 2px #23a55a':''}">${u.init}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;color:${spk?'#23a55a':'#dcddde'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name)}</div>
@@ -3000,11 +3194,30 @@ function updateCallWindow(){
     const strip=document.getElementById('cwStrip');
     if(strip) strip.innerHTML=allUsers.map(u=>{
       const isMic=u.isMe&&micMuted;const spk=u.speaking&&!isMic;
-      return `<div style="width:86px;height:60px;flex-shrink:0;border:2px solid ${spk?'#23a55a':'transparent'};border-radius:8px;background:#2b2d31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+      return `<div data-user-ctx="${u.uid}" oncontextmenu="showUserContextMenu(event,'${u.uid}')" style="width:86px;height:60px;flex-shrink:0;border:2px solid ${spk?'#23a55a':'transparent'};border-radius:8px;background:#2b2d31;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
         <div style="width:28px;height:28px;border-radius:50%;background:${u.color};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;${spk?'box-shadow:0 0 0 2px #23a55a':''}">${u.init}</div>
         <div style="font-size:10px;color:rgba(255,255,255,.75);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px;text-align:center">${esc(u.name||'?')}${isMic?' 🔇':''}</div>
       </div>`;
     }).join('');
+
+    activeScreens.forEach(s=>{
+      const tile=document.getElementById('screentile_'+s.uid);
+      if(!tile) return;
+      const media=tile.querySelector('video,canvas');
+      if(media){
+        media.style.cursor='pointer';
+        media.onclick=(ev)=>{ev.stopPropagation();openScreenStream(s.uid);};
+      }
+      let cover=document.getElementById('scrcover_'+s.uid);
+      if(!cover){
+        cover=document.createElement('div');
+        cover.id='scrcover_'+s.uid;
+        cover.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,.36),rgba(0,0,0,.72));backdrop-filter:blur(2px);z-index:3';
+        cover.innerHTML=`<button type="button" onclick="event.stopPropagation();openScreenStream('${s.uid}')" style="border:none;background:rgba(88,101,242,.95);color:#fff;border-radius:999px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.35)">Смотреть стрим</button>`;
+        tile.appendChild(cover);
+      }
+      cover.style.display=watchedScreens.has(s.uid)?'none':'flex';
+    });
 
   } else {
     // Normal mode — Discord adaptive grid
@@ -3017,7 +3230,7 @@ function updateCallWindow(){
     body.innerHTML=allUsers.map(u=>{
       const isMic=u.isMe&&micMuted;
       const spk=(u.isMe ? !!window._mySpeaking : u.speaking)&&!isMic;
-      return `<div class="cw-participant${spk?' spk':''}">
+      return `<div class="cw-participant${spk?' spk':''}" data-user-ctx="${u.uid}" oncontextmenu="showUserContextMenu(event,'${u.uid}')">
         <div class="cw-av" style="background:${u.color};width:${avSize}px;height:${avSize}px;font-size:${fontSize}px;${spk?'box-shadow:0 0 0 3px rgba(35,165,90,.7),0 0 16px rgba(35,165,90,.3)':''}">${u.init}</div>
         <div class="cw-name">${u.isMe?'🎙 ':''}${esc(u.name||'?')}${isMic?' 🔇':''}</div>
       </div>`;
@@ -3068,6 +3281,8 @@ window.leaveVoice=async function(){
     }
   }
   stopScreenShare();
+  watchedScreens.clear();
+  closeScreenWatchOverlay();
 
   // Show call duration in DM chat (like Discord)
   if(prevRoom&&prevRoom.startsWith('dm:')&&peerId&&callStart){
@@ -3107,7 +3322,7 @@ function renderVCUsers(){
       const icons=(isMutedMic?'🔇':'')+(isMutedDeaf?'🔕':'');
       const role=u.role||'';
       const pingMs=u.ping?`<span style="font-size:9px;color:#72767d;margin-left:4px">${u.ping}ms</span>`:'';
-      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}"><span class="vc-dot"></span><span style="color:${roleColor(role)||'inherit'}">${esc(u.name)}</span>${roleBadge(role)}${icons?`<span style="font-size:10px;opacity:.6;margin-left:3px">${icons}</span>`:''}${pingMs}</div>`;
+      return `<div class="vc-user${u.speaking&&!isMutedMic?' spk':''}" data-user-ctx="${uid}" oncontextmenu="showUserContextMenu(event,'${uid}')"><span class="vc-dot"></span><span style="color:${roleColor(role)||'inherit'}">${esc(u.name)}</span>${roleBadge(role)}${icons?`<span style="font-size:10px;opacity:.6;margin-left:3px">${icons}</span>`:''}${Number.isFinite(userVolumeOverrides[uid])&&Math.round(getUserVolume(uid)*100)!==100?`<span style="font-size:10px;opacity:.6;margin-left:4px">🔊 ${Math.round(getUserVolume(uid)*100)}%</span>`:''}${pingMs}</div>`;
     }).join('');
   });
 }
@@ -3119,7 +3334,7 @@ function updateVCBar(){
   el.innerHTML=all.map(u=>{
     const isMic=u.isMe&&micMuted;
     const spk=u.speaking&&!isMic;
-    return `<div class="vbu${spk?' spk':''}">
+    return `<div class="vbu${spk?' spk':''}" data-user-ctx="${u.uid}" oncontextmenu="showUserContextMenu(event,'${u.uid}')">
       <div class="vbu-av" style="background:${u.color}">${u.init}</div>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name||'?')}</span>
       ${isMic?'<span style="font-size:10px;opacity:.7">🔇</span>':''}
@@ -3312,7 +3527,7 @@ window.setVolume=function(val){
   window._volumeGain=gain;
   localStorage.setItem('vl_out_vol',val);
   // Apply immediately to all active peer audio nodes
-  peerAudio.forEach(state=>{ if(state.gainNode) state.gainNode.gain.value=gain; });
+  applyAllPeerVolumes();
   // Sync all volume sliders
   ['cpVolume','sOutVol'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=val;});
   const vv=document.getElementById('sOutVolVal');if(vv)vv.textContent=val+'%';
@@ -4176,7 +4391,9 @@ function loadAllSettings(){
 
   // Output volume
   const outVol=localStorage.getItem('vl_out_vol')||'100';
+  loadUserVolumeOverrides();
   window._volumeGain=parseFloat(outVol)/100;
+  applyAllPeerVolumes();
   const ovEl=document.getElementById('sOutVol');const ovValEl=document.getElementById('sOutVolVal');
   if(ovEl)ovEl.value=outVol;if(ovValEl)ovValEl.textContent=outVol+'%';
   const load=(k,id,def)=>{const v=localStorage.getItem(k);if(v!==null&&document.getElementById(id))document.getElementById(id).checked=v==='1';};
